@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   ChartArea,
   ChartBar,
@@ -12,7 +12,11 @@ import {
 } from 'lucide-react'
 import type { ChartConfig, ChartType, SlideBlock } from '../types'
 import { parseChartInput, serializeChartInput } from '../lib/chartData'
-import { formatChartValue } from '../lib/chartRenderer'
+import { formatChartValue } from '../lib/chartLayout'
+
+const ChartMappingPanel = lazy(() =>
+  import('./ChartMappingPanel').then((module) => ({ default: module.ChartMappingPanel })),
+)
 
 const chartTypes: { type: ChartType; name: string; purpose: string; icon: typeof ChartBar }[] = [
   {
@@ -69,6 +73,7 @@ export function ChartEditor({
     () => drafts.get(block.id)?.sourceName ?? '',
   )
   const [reading, setReading] = useState(false)
+  const [mapping, setMapping] = useState(false)
   const upload = useRef<HTMLInputElement>(null)
   const current = useRef({ chart, numberFormat })
   current.current = { chart, numberFormat }
@@ -102,26 +107,29 @@ export function ChartEditor({
     setError('')
     onChange({ ...chart, type })
   }
+  function commit(text: string) {
+    const parsed = parseChartInput(text, numberFormat)
+    const next: ChartConfig = {
+      ...chart,
+      data: parsed.data,
+      seriesName: parsed.seriesName,
+      additionalSeries: parsed.additionalSeries,
+      unit: parsed.unit || chart.unit,
+      source: pendingFileName || chart.source,
+    }
+    const message = typeError(next.type, next)
+    if (message) throw new Error(message + ' Troque o tipo antes de aplicar estes dados.')
+    onChange(next)
+    drafts.delete(block.id)
+    onDraftChange()
+    setRaw(serializeChartInput(next, numberFormat))
+    setError('')
+    setFileNotice('')
+    setPendingFileName('')
+  }
   function apply() {
     try {
-      const parsed = parseChartInput(raw, numberFormat)
-      const next: ChartConfig = {
-        ...chart,
-        data: parsed.data,
-        seriesName: parsed.seriesName,
-        additionalSeries: parsed.additionalSeries,
-        unit: parsed.unit || chart.unit,
-        source: pendingFileName || chart.source,
-      }
-      const message = typeError(next.type, next)
-      if (message) throw new Error(message + ' Troque o tipo antes de aplicar estes dados.')
-      onChange(next)
-      drafts.delete(block.id)
-      onDraftChange()
-      setRaw(serializeChartInput(next, numberFormat))
-      setError('')
-      setFileNotice('')
-      setPendingFileName('')
+      commit(raw)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Confira os valores informados.')
     }
@@ -146,7 +154,8 @@ export function ChartEditor({
       setPendingFileName(file.name.slice(0, 160))
       rememberDraft(text, numberFormat, file.name.slice(0, 160))
       setFileNotice(
-        file.name + ' carregado. Confira o formato dos números e clique em Aplicar dados.',
+        file.name +
+          ' carregado. Confira o formato dos números e use Prévia e colunas antes de aplicar.',
       )
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Não foi possível ler a tabela.')
@@ -230,8 +239,15 @@ export function ChartEditor({
       />
       <p className="property-tip">
         Cole uma tabela do Excel ou use uma linha por categoria. Até 12 categorias e três séries.
-        Comece o cabeçalho com Categoria, Mês ou Produto.
+        Use Prévia e colunas para escolher categorias e valores, inclusive em outra ordem.
       </p>
+      <button
+        className="button secondary full-width"
+        onClick={() => setMapping(true)}
+        disabled={reading || !raw.trim()}
+      >
+        Prévia e colunas
+      </button>
       {fileNotice && (
         <p className="chart-file-notice" role="status">
           {fileNotice}
@@ -330,6 +346,19 @@ export function ChartEditor({
       <p className="property-tip">
         A animação aparece ao apresentar. O PDF recebe o gráfico completo e estático.
       </p>
+      {mapping && (
+        <Suspense fallback={<p role="status">Abrindo prévia…</p>}>
+          <ChartMappingPanel
+            text={raw}
+            format={numberFormat}
+            onClose={() => setMapping(false)}
+            onApply={(text) => {
+              commit(text)
+              setMapping(false)
+            }}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

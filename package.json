@@ -1,7 +1,7 @@
 {
   "name": "zetta",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -24,6 +24,7 @@
     "pdfjs-dist": "^5.4.296",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "svg2pdf.js": "2.8.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {

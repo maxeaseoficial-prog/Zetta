@@ -1,0 +1,173 @@
+{
+  "errors": [],
+  "charts": [
+    {
+      "type": "bar",
+      "animations": [
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-0",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-1",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-2",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-3",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-4",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-5",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-6",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-7",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-8",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-9",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-10",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-11",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-12",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-13",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-14",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-15",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-16",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_1_-de6d9005-3f8c-4991-accf-9c35675a31f4-block-0-1-animated-zr1-ani-17",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    },
+    {
+      "type": "horizontalBar",
+      "animations": [
+        {
+          "name": "zetta-_r_3_-8cd494b2-2a30-42b0-9849-2a3b27e4fede-block-0-1-animated-zr3-ani-0",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_3_-8cd494b2-2a30-42b0-9849-2a3b27e4fede-block-0-1-animated-zr3-ani-1",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_3_-8cd494b2-2a30-42b0-9849-2a3b27e4fede-block-0-1-animated-zr3-ani-2",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_3_-8cd494b2-2a30-42b0-9849-2a3b27e4fede-block-0-1-animated-zr3-ani-3",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_3_-8cd494b2-2a30-42b0-9849-2a3b27e4fede-block-0-1-animated-zr3-ani-4",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    },
+    {
+      "type": "line",
+      "animations": [
+        {
+          "name": "zetta-_r_5_-03b38852-84ce-483e-974c-dfb4dc68690b-block-0-1-animated-zr5-ani-0",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    },
+    {
+      "type": "area",
+      "animations": [
+        {
+          "name": "zetta-_r_7_-b4a4a994-9f7e-48ca-af67-87cb5da6b4f1-block-0-1-animated-zr7-ani-0",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    },
+    {
+      "type": "pie",
+      "animations": [
+        {
+          "name": "zetta-_r_9_-64c7cbd5-91b1-40dd-b2e4-228893d36c6a-block-0-1-animated-zr9-ani-0",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_9_-64c7cbd5-91b1-40dd-b2e4-228893d36c6a-block-0-1-animated-zr9-ani-1",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_9_-64c7cbd5-91b1-40dd-b2e4-228893d36c6a-block-0-1-animated-zr9-ani-2",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_9_-64c7cbd5-91b1-40dd-b2e4-228893d36c6a-block-0-1-animated-zr9-ani-3",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    },
+    {
+      "type": "donut",
+      "animations": [
+        {
+          "name": "zetta-_r_b_-5681c53b-debf-499d-a173-dd5850273686-block-0-1-animated-zr11-ani-0",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_b_-5681c53b-debf-499d-a173-dd5850273686-block-0-1-animated-zr11-ani-1",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_b_-5681c53b-debf-499d-a173-dd5850273686-block-0-1-animated-zr11-ani-2",
+          "state": "running"
+        },
+        {
+          "name": "zetta-_r_b_-5681c53b-debf-499d-a173-dd5850273686-block-0-1-animated-zr11-ani-3",
+          "state": "running"
+        }
+      ],
+      "inlineSvg": 1
+    }
+  ]
+}

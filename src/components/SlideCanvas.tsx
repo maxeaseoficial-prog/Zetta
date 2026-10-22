@@ -1,6 +1,13 @@
 import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import type { Slide, SlideBlock, Theme, IllustrationKind } from '../types'
-import { getChartWarnings, renderChartSvg } from '../lib/chartRenderer'
+import type { Slide, SlideBlock, Theme, IllustrationKind, BrandKit } from '../types'
+import { getChartWarnings } from '../lib/chartLayout'
+import { getLoadedChartRenderer, loadChartRenderer } from '../lib/chartRuntime'
+import { resolveAppearance } from '../lib/brand'
+import { areBrandFontsReady, ensureBrandFonts, fontFamilyFor, fontIdForFamily } from '../lib/fonts'
+import { resolveImagePlacement } from '../lib/imageCrop'
+import { getDiagramWarnings } from '../lib/diagramLayout'
+import { DiagramBlock } from './DiagramBlock'
+import { InlineChartSvg } from './InlineChartSvg'
 
 export const SLIDE_WIDTH = 1280
 export const SLIDE_HEIGHT = 720
@@ -9,6 +16,9 @@ export interface SlideCanvasProps {
   slide: Slide
   theme: Theme
   accent: string
+  brand?: BrandKit
+  /** Export-only: replace legacy host fonts with explicitly reported portable fonts. */
+  portableFonts?: boolean
   selectedBlockId?: string
   onSelect?: (id: string) => void
   onEditText?: (id: string) => void
@@ -125,7 +135,40 @@ function colorsFor(slide: Slide, theme: Theme, accent: string): Colors {
 }
 
 function fontFamily(theme: Theme): string {
+  if (fontIdForFamily(theme.fontFamily)) return theme.fontFamily
   return theme.fontFamily.includes('Georgia') ? 'Georgia, serif' : 'Arial, sans-serif'
+}
+
+function slideAppearance(
+  slide: Slide,
+  theme: Theme,
+  accent: string,
+  brand?: BrandKit,
+  portableFonts = false,
+) {
+  const appearance = resolveAppearance(slide, theme, accent, brand)
+  const bodyFamily = appearance.brand
+    ? fontFamilyFor(appearance.brand.font)
+    : portableFonts
+      ? fontFamilyFor('sans')
+      : 'Arial, sans-serif'
+  if (portableFonts && !appearance.brand)
+    appearance.theme = {
+      ...appearance.theme,
+      fontFamily: fontFamilyFor(appearance.theme.fontFamily.includes('Georgia') ? 'serif' : 'sans'),
+    }
+  return { ...appearance, bodyFamily }
+}
+
+function footerContent(slide: Slide, brand?: BrandKit): string {
+  return [
+    brand?.footer,
+    slide.sourcePages.length
+      ? `Fonte: PDF · ${slide.sourcePages.length === 1 ? 'p.' : 'pp.'} ${slide.sourcePages.join(', ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function widthOf(text: string, size: number, family: string, weight = 400, spacing = 0): number {
@@ -262,7 +305,7 @@ function stack(
   const gap = blocks.length > 3 ? 12 : 18
   const available = rect.h - gap * (blocks.length - 1)
   const weights = blocks.map(({ block }) => {
-    if (block.type === 'chart') return 8
+    if (block.type === 'chart' || block.type === 'diagram') return 8
     if (block.type === 'image') return 6
     const lines = Math.max(
       block.content.split('\n').length,
@@ -282,6 +325,7 @@ function stack(
 function textForBlock(
   block: SlideBlock,
   rect: Rect,
+  family = 'Arial, sans-serif',
 ): { paragraphs: TextLayout[]; size: number; height: number; fits: boolean; padding: number } {
   const padding = Math.min(28, Math.max(18, rect.w * 0.055))
   const isBullet = block.type === 'bullets'
@@ -304,7 +348,7 @@ function textForBlock(
   let size = preferred
   const measure = (fontSize: number) =>
     paragraphs.map((text) =>
-      fit(text, contentWidth, Infinity, fontSize, fontSize, 'Arial, sans-serif', weight, 1.3),
+      fit(text, contentWidth, Infinity, fontSize, fontSize, family, weight, 1.3),
     )
   let measured = measure(size)
   const gap = isBullet ? 10 : 0
@@ -324,9 +368,11 @@ function textForBlock(
   }
 }
 
-function chartFrame(block: SlideBlock, rect: Rect) {
-  const title = fit(block.content, rect.w - 48, 52, 18, 16, 'Arial, sans-serif', 700)
-  const source = block.chart?.source ? wrap(`Fonte: ${block.chart.source}`, rect.w - 48, 12) : []
+function chartFrame(block: SlideBlock, rect: Rect, family = 'Arial, sans-serif') {
+  const title = fit(block.content, rect.w - 48, 52, 18, 16, family, 700)
+  const source = block.chart?.source
+    ? wrap(`Fonte: ${block.chart.source}`, rect.w - 48, 12, family)
+    : []
   const headingHeight = block.content ? title.height + 14 : 0
   const sourceHeight = source.length ? source.length * 15 + 10 : 0
   return {
@@ -341,12 +387,13 @@ function chartFrame(block: SlideBlock, rect: Rect) {
   }
 }
 
-function chartWarnings(block: SlideBlock, rect: Rect): string[] {
-  const { title, source, graph } = chartFrame(block, rect)
+function chartWarnings(block: SlideBlock, rect: Rect, family = 'Arial, sans-serif'): string[] {
+  const { title, source, graph } = chartFrame(block, rect, family)
   const warnings = getChartWarnings(
     block.chart ?? { type: 'bar', data: [], unit: '', source: '' },
     graph.w,
     graph.h,
+    family,
   )
   if (title.lines.length > 2)
     warnings.push('O título do gráfico precisa ser mais curto ou ter um layout maior.')
@@ -357,7 +404,12 @@ function chartWarnings(block: SlideBlock, rect: Rect): string[] {
   return warnings
 }
 
-function makePlan(slide: Slide, theme: Theme): Plan {
+function makePlan(
+  slide: Slide,
+  theme: Theme,
+  bodyFamily = 'Arial, sans-serif',
+  brand?: BrandKit,
+): Plan {
   const blocks = slide.blocks.map((block, index) => ({ block, index }))
   const images = blocks.filter(({ block }) => block.type === 'image')
   const other = blocks.filter(({ block }) => block.type !== 'image')
@@ -368,7 +420,8 @@ function makePlan(slide: Slide, theme: Theme): Plan {
   const titleWeight =
     slide.titleStyle?.bold === false
       ? 400
-      : family.includes('Georgia') && slide.titleStyle?.bold === undefined
+      : (family.includes('Georgia') || family.includes('Liberation Serif')) &&
+          slide.titleStyle?.bold === undefined
         ? 400
         : 700
   const titleRect: Rect = {
@@ -423,10 +476,10 @@ function makePlan(slide: Slide, theme: Theme): Plan {
     stack(secondary, { ...body, x: 802, w: 414 }, placements)
   } else if (
     slide.layout === 'chart' &&
-    blocks.some(({ block }) => block.type === 'chart') &&
+    blocks.some(({ block }) => block.type === 'chart' || block.type === 'diagram') &&
     blocks.length > 1
   ) {
-    const primary = blocks.find(({ block }) => block.type === 'chart')!
+    const primary = blocks.find(({ block }) => block.type === 'chart' || block.type === 'diagram')!
     placements.push({ ...primary, ...body, w: 754 })
     stack(
       blocks.filter((item) => item !== primary),
@@ -466,25 +519,63 @@ function makePlan(slide: Slide, theme: Theme): Plan {
     warnings.push('Há blocos com identificadores repetidos neste slide.')
   if (
     slide.eyebrow &&
-    wrap(slide.eyebrow, heroImage ? 660 : 1100, 13, 'Arial, sans-serif', 700, 1.5).length > 2
+    wrap(slide.eyebrow, heroImage ? 660 : 1100, 13, bodyFamily, 700, 1.5).length > 2
   )
     warnings.push('O rótulo acima do título é longo demais. Use até duas linhas curtas.')
   for (const placement of placements) {
     const block = placement.block
-    if (['text', 'bullets', 'callout'].includes(block.type) && !textForBlock(block, placement).fits)
+    if (
+      ['text', 'bullets', 'callout'].includes(block.type) &&
+      !textForBlock(block, placement, bodyFamily).fits
+    )
       warnings.push(
         `O bloco ${placement.index + 1} tem mais texto do que o layout comporta. Encurte o conteúdo ou escolha outra composição.`,
       )
-    if (block.type === 'chart') warnings.push(...chartWarnings(block, placement))
+    if (block.type === 'chart') warnings.push(...chartWarnings(block, placement, bodyFamily))
+    if (block.type === 'diagram')
+      warnings.push(
+        ...getDiagramWarnings(
+          block.diagram ?? { type: 'process', items: [], source: '' },
+          placement.w,
+          placement.h,
+          bodyFamily,
+          block.content,
+        ),
+      )
     if (placement.h < 40 || placement.w < 60)
       warnings.push(`O bloco ${placement.index + 1} não tem espaço suficiente neste layout.`)
   }
+  const footer = footerContent(slide, brand)
+  if (footer && wrap(footer, brand?.logo ? 915 : 1015, 11, bodyFamily).length > 2)
+    warnings.push('O rodapé não cabe em duas linhas. Encurte-o antes de exportar.')
   return { title, titleRect, placements, warnings: Array.from(new Set(warnings)), hero }
 }
 
 /** The editor and the PDF exporter share exactly the same layout checks. */
-export function getSlideWarnings(slide: Slide, theme: Theme): string[] {
-  return makePlan(slide, theme).warnings
+export function getSlideWarnings(
+  slide: Slide,
+  theme: Theme,
+  brand?: BrandKit,
+  portableFonts = false,
+): string[] {
+  const appearance = slideAppearance(slide, theme, theme.accent, brand, portableFonts)
+  return makePlan(slide, appearance.theme, appearance.bodyFamily, appearance.brand).warnings
+}
+
+export function getBlockFrame(
+  slide: Slide,
+  theme: Theme,
+  id: string,
+  brand?: BrandKit,
+): Rect | null {
+  const appearance = slideAppearance(slide, theme, theme.accent, brand)
+  const placement = makePlan(
+    slide,
+    appearance.theme,
+    appearance.bodyFamily,
+    appearance.brand,
+  ).placements.find((item) => item.block.id === id)
+  return placement ? { x: placement.x, y: placement.y, w: placement.w, h: placement.h } : null
 }
 
 export interface TextEditRect {
@@ -500,8 +591,15 @@ export interface TextEditRect {
 }
 
 /** Text overlay coordinates use the same measured typography as the SVG. */
-export function getTextEditRect(slide: Slide, theme: Theme, id: string): TextEditRect | null {
-  const plan = makePlan(slide, theme)
+export function getTextEditRect(
+  slide: Slide,
+  theme: Theme,
+  id: string,
+  brand?: BrandKit,
+): TextEditRect | null {
+  const appearance = slideAppearance(slide, theme, theme.accent, brand)
+  theme = appearance.theme
+  const plan = makePlan(slide, theme, appearance.bodyFamily, appearance.brand)
   if (id === 'title') {
     const family = fontFamily(theme)
     return {
@@ -515,7 +613,8 @@ export function getTextEditRect(slide: Slide, theme: Theme, id: string): TextEdi
       fontWeight:
         slide.titleStyle?.bold === false
           ? 400
-          : family.includes('Georgia') && slide.titleStyle?.bold === undefined
+          : (family.includes('Georgia') || family.includes('Liberation Serif')) &&
+              slide.titleStyle?.bold === undefined
             ? 400
             : 700,
       textAlign: slide.titleStyle?.align ?? 'left',
@@ -523,7 +622,7 @@ export function getTextEditRect(slide: Slide, theme: Theme, id: string): TextEdi
   }
   const placement = plan.placements.find((item) => item.block.id === id)
   if (!placement || !['text', 'bullets', 'callout'].includes(placement.block.type)) return null
-  const measured = textForBlock(placement.block, placement)
+  const measured = textForBlock(placement.block, placement, appearance.bodyFamily)
   const indent = placement.block.type === 'bullets' ? 22 : 0
   return {
     x: placement.x + measured.padding + indent,
@@ -532,7 +631,7 @@ export function getTextEditRect(slide: Slide, theme: Theme, id: string): TextEdi
     height: Math.max(40, measured.height + 8),
     fontSize: measured.size,
     lineHeight: measured.size * 1.3,
-    fontFamily: 'Arial, sans-serif',
+    fontFamily: appearance.bodyFamily,
     fontWeight: placement.block.style?.bold || placement.block.type === 'callout' ? 700 : 400,
     textAlign:
       placement.block.style?.align ??
@@ -607,6 +706,7 @@ function Artwork({
       viewBox="0 0 500 500"
       preserveAspectRatio="xMidYMid slice"
       aria-label="Ilustração abstrata"
+      data-procedural-artwork="true"
     >
       <defs>
         <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="1" y2="1">
@@ -802,20 +902,39 @@ function Chart({
   id,
   animate = false,
   animationKey = 0,
+  family,
 }: {
   placement: Placement
   colors: Colors
   id: string
   animate?: boolean
   animationKey?: number
+  family: string
 }) {
+  const [renderer, setRenderer] = useState(getLoadedChartRenderer)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let active = true
+    setError('')
+    loadChartRenderer()
+      .then((module) => {
+        if (active) setRenderer(module)
+      })
+      .catch(() => {
+        if (active) setError('Não foi possível preparar o gráfico. Tentar novamente.')
+      })
+    return () => {
+      active = false
+    }
+  }, [attempt])
   const { block, x, y, w, h } = placement
   const chart = block.chart ?? { type: 'bar' as const, data: [], unit: '', source: '' }
   const bg = validColor(block.style?.background, colors.surface)
   const ink = readable(validColor(block.style?.color, colors.fg), bg)
   const muted = readable(colors.muted, bg)
-  const { title, source, graph } = chartFrame(block, placement)
-  const snapshot = renderChartSvg(chart, {
+  const { title, source, graph } = chartFrame(block, placement, family)
+  const snapshot = renderer?.renderChartSvg(chart, {
     width: Math.max(1, graph.w),
     height: Math.max(1, graph.h),
     foreground: ink,
@@ -823,38 +942,112 @@ function Chart({
     accent: colors.accent,
     background: bg,
     animate,
+    fontFamily: family,
   })
-  const animated = animate && chart.animate !== false && snapshot.svg.includes('@keyframes')
-  // A distinct document per playback avoids sharing an SVG image's animation
-  // timeline with another chart or a previous visit to the same slide.
-  const href = animated
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(snapshot.svg.replace('<svg ', `<svg data-zetta-entry="${id}-${animationKey}" `))}`
-    : snapshot.dataUrl
+  const animated = Boolean(
+    animate && chart.animate !== false && snapshot?.svg.includes('@keyframes'),
+  )
+  const scope = `${id}-${animationKey}-${animated ? 'animated' : 'static'}`
+  const href = snapshot
+    ? animated
+      ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(snapshot.svg.replace('<svg ', `<svg data-zetta-entry="${scope}" `))}`
+      : snapshot.dataUrl
+    : undefined
   return (
-    <g data-chart-type={chart.type} data-chart-animated={String(animated)}>
+    <g
+      data-chart-type={chart.type}
+      data-chart-animated={String(animated)}
+      data-chart-state={error ? 'error' : snapshot ? 'ready' : 'loading'}
+    >
       <rect x={x} y={y} width={w} height={h} rx="20" fill={bg} />
       {block.content && (
-        <TextLines layout={title} x={x + 24} y={y + 18} width={w - 48} color={ink} weight={700} />
+        <TextLines
+          layout={title}
+          x={x + 24}
+          y={y + 18}
+          width={w - 48}
+          color={ink}
+          weight={700}
+          family={family}
+        />
       )}
-      <image
-        key={`${id}-${animationKey}-${animated ? 'animated' : 'static'}`}
-        x={graph.x}
-        y={graph.y}
-        width={Math.max(1, graph.w)}
-        height={Math.max(1, graph.h)}
-        href={href}
-        preserveAspectRatio="xMidYMid meet"
-        data-chart-type={chart.type}
-        data-chart-animated={String(animated)}
-        aria-label={`${block.content || 'Gráfico'} · ${chart.data.length} categorias${chart.unit ? ` · ${chart.unit}` : ''}`}
-      />
+      {snapshot ? (
+        fontIdForFamily(family) ? (
+          <InlineChartSvg
+            key={scope}
+            svg={snapshot.svg}
+            scope={scope}
+            x={graph.x}
+            y={graph.y}
+            width={Math.max(1, graph.w)}
+            height={Math.max(1, graph.h)}
+            type={chart.type}
+            animated={animated}
+          />
+        ) : (
+          <image
+            key={scope}
+            x={graph.x}
+            y={graph.y}
+            width={Math.max(1, graph.w)}
+            height={Math.max(1, graph.h)}
+            href={href}
+            preserveAspectRatio="xMidYMid meet"
+            data-chart-type={chart.type}
+            data-chart-animated={String(animated)}
+            aria-label={`${block.content || 'Gráfico'} · ${chart.data.length} categorias${chart.unit ? ` · ${chart.unit}` : ''}`}
+          />
+        )
+      ) : (
+        <g
+          role={error ? 'button' : undefined}
+          tabIndex={error ? 0 : undefined}
+          onClick={
+            error
+              ? (event) => {
+                  event.stopPropagation()
+                  setAttempt((value) => value + 1)
+                }
+              : undefined
+          }
+          onKeyDown={
+            error
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setAttempt((value) => value + 1)
+                  }
+                }
+              : undefined
+          }
+          aria-label={error || 'Preparando gráfico'}
+        >
+          <rect
+            x={graph.x}
+            y={graph.y}
+            width={Math.max(1, graph.w)}
+            height={Math.max(1, graph.h)}
+            fill="transparent"
+          />
+          <text
+            x={graph.x + graph.w / 2}
+            y={graph.y + graph.h / 2}
+            textAnchor="middle"
+            fill={muted}
+            fontSize="16"
+            fontFamily={family}
+          >
+            {error || 'Preparando gráfico…'}
+          </text>
+        </g>
+      )}
       {source.map((line, index) => (
         <text
           key={index}
           x={x + 24}
           y={y + h - 14 - (source.length - index - 1) * 15}
           fill={muted}
-          fontFamily="Arial, sans-serif"
+          fontFamily={family}
           fontSize="12"
         >
           {line}
@@ -864,9 +1057,17 @@ function Chart({
   )
 }
 
-function TextBlock({ placement, colors }: { placement: Placement; colors: Colors }) {
+function TextBlock({
+  placement,
+  colors,
+  family,
+}: {
+  placement: Placement
+  colors: Colors
+  family: string
+}) {
   const { block, x, y, w, h, plain } = placement
-  const measured = textForBlock(block, placement)
+  const measured = textForBlock(block, placement, family)
   const isCallout = block.type === 'callout'
   const bg = validColor(block.style?.background, isCallout ? colors.tint : colors.surface)
   const actualBg = plain && !block.style?.background ? colors.bg : bg
@@ -905,6 +1106,7 @@ function TextBlock({ placement, colors }: { placement: Placement; colors: Colors
             )}
             <TextLines
               layout={paragraph}
+              family={family}
               x={x + measured.padding + (bullet ? 22 : 0)}
               y={atY}
               width={innerW}
@@ -924,6 +1126,8 @@ export function SlideCanvas({
   slide,
   theme,
   accent,
+  brand,
+  portableFonts = false,
   selectedBlockId,
   onSelect,
   onEditText,
@@ -933,12 +1137,46 @@ export function SlideCanvas({
   animateCharts = false,
   animationKey = 0,
 }: SlideCanvasProps) {
+  const appearance = slideAppearance(slide, theme, accent, brand, portableFonts)
+  theme = appearance.theme
+  accent = appearance.accent
+  brand = appearance.brand
+  const bodyFamily = appearance.bodyFamily
   const reactId = useId()
   const [, updateImages] = useState(0)
-  const imageSources = slide.blocks
-    .filter((block) => block.type === 'image' && block.image?.src)
-    .map((block) => block.image!.src!)
-    .join('\n')
+  const imageSources = [
+    ...slide.blocks
+      .filter((block) => block.type === 'image' && block.image?.src)
+      .map((block) => block.image!.src!),
+    ...(brand?.logo?.src ? [brand.logo.src] : []),
+  ].join('\n')
+  const [, updateFonts] = useState(0)
+  const [fontError, setFontError] = useState('')
+  const [fontAttempt, setFontAttempt] = useState(0)
+  const fontIds = [
+    ...new Set(
+      [fontIdForFamily(theme.fontFamily), fontIdForFamily(bodyFamily)].filter((id) => id !== null),
+    ),
+  ]
+  const fontKey = fontIds.join(',')
+  useEffect(() => {
+    let active = true
+    setFontError('')
+    if (fontIds.length)
+      Promise.all(fontIds.map(ensureBrandFonts))
+        .then(() => {
+          if (active) updateFonts((version) => version + 1)
+        })
+        .catch((error) => {
+          if (active)
+            setFontError(
+              error instanceof Error ? error.message : 'Não foi possível carregar a fonte.',
+            )
+        })
+    return () => {
+      active = false
+    }
+  }, [fontKey, fontAttempt])
   useEffect(() => {
     let active = true
     for (const src of imageSources.split('\n').filter(Boolean)) {
@@ -956,12 +1194,13 @@ export function SlideCanvas({
   }, [imageSources])
   const prefix = `zetta-${reactId.replace(/[^\w-]/g, '')}-${slide.id.replace(/[^\w-]/g, '')}`
   const colors = colorsFor(slide, theme, accent)
-  const plan = makePlan(slide, theme)
+  const plan = makePlan(slide, theme, bodyFamily, brand)
   const family = fontFamily(theme)
   const titleWeight =
     slide.titleStyle?.bold === false
       ? 400
-      : family.includes('Georgia') && slide.titleStyle?.bold === undefined
+      : (family.includes('Georgia') || family.includes('Liberation Serif')) &&
+          slide.titleStyle?.bold === undefined
         ? 400
         : 700
   const keySelect = (event: KeyboardEvent<SVGGElement>, id: string) => {
@@ -992,10 +1231,63 @@ export function SlideCanvas({
     slide.eyebrow.toLocaleUpperCase('pt-BR'),
     plan.titleRect.w - 34,
     13,
-    'Arial, sans-serif',
+    bodyFamily,
     700,
     1.5,
   )
+
+  if (fontError || fontIds.some((id) => !areBrandFontsReady(id)))
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox={`0 0 ${SLIDE_WIDTH} ${SLIDE_HEIGHT}`}
+        width={SLIDE_WIDTH}
+        height={SLIDE_HEIGHT}
+        className={className}
+        data-slide-id={slide.id}
+        data-font-state={fontError ? 'error' : 'loading'}
+        style={{ display: 'block', width: '100%', height: 'auto' }}
+      >
+        <rect width={SLIDE_WIDTH} height={SLIDE_HEIGHT} fill={colors.bg} />
+        <text
+          x="640"
+          y="340"
+          textAnchor="middle"
+          fill={colors.fg}
+          fontFamily="Arial, sans-serif"
+          fontSize="22"
+        >
+          {fontError || 'Preparando a fonte da apresentação…'}
+        </text>
+        {fontError && (
+          <g
+            role="button"
+            tabIndex={0}
+            aria-label="Tentar carregar a fonte novamente"
+            onClick={() => setFontAttempt((value) => value + 1)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setFontAttempt((value) => value + 1)
+              }
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            <rect x="500" y="374" width="280" height="48" rx="12" fill="#2563EB" />
+            <text
+              x="640"
+              y="405"
+              textAnchor="middle"
+              fill="#FFFFFF"
+              fontFamily="Arial, sans-serif"
+              fontSize="18"
+            >
+              Tentar novamente
+            </text>
+          </g>
+        )}
+      </svg>
+    )
 
   return (
     <svg
@@ -1010,10 +1302,11 @@ export function SlideCanvas({
         display: 'block',
         width: '100%',
         height: 'auto',
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: bodyFamily,
         overflow: 'hidden',
       }}
       data-slide-id={slide.id}
+      data-font-state="ready"
     >
       <title>{slide.title || 'Slide sem título'}</title>
       <rect width={SLIDE_WIDTH} height={SLIDE_HEIGHT} fill={colors.bg} />
@@ -1042,7 +1335,7 @@ export function SlideCanvas({
           <circle cx="69" cy="56" r="4" fill={colors.accent} />
           <text
             fill={colors.ink}
-            fontFamily="Arial, sans-serif"
+            fontFamily={bodyFamily}
             fontWeight="700"
             fontSize="13"
             letterSpacing="1.5"
@@ -1081,7 +1374,7 @@ export function SlideCanvas({
             height={Math.max(50, plan.title.height + 11)}
             rx="6"
             fill="none"
-            stroke="#7367EC"
+            stroke="#2563EB"
             strokeWidth="2.5"
           />
         )}
@@ -1091,24 +1384,16 @@ export function SlideCanvas({
         const id = `${prefix}-block-${index}`
         const isImage = block.type === 'image'
         const image = block.image
-        const position = Math.max(0, Math.min(100, image?.position ?? 50))
         const natural = image?.src ? imageDimensions.get(image.src) : undefined
-        const scale = natural
-          ? image?.fit === 'contain'
-            ? Math.min(w / natural.width, h / natural.height)
-            : Math.max(w / natural.width, h / natural.height)
-          : 1
-        const imageW = natural ? natural.width * scale : w
-        const imageH = natural ? natural.height * scale : h
-        const imageX = x + (w - imageW) * (image?.fit === 'contain' ? 0.5 : position / 100)
-        const imageY = y + (h - imageH) * (image?.fit === 'contain' ? 0.5 : position / 100)
+        const imageFrame =
+          image && natural ? resolveImagePlacement(image, natural, placement) : placement
         return (
           <g
             key={`${block.id}-${index}`}
             {...interactive(
               block.id,
-              `Selecionar ${block.type === 'image' ? 'imagem' : block.type === 'chart' ? 'gráfico' : 'bloco de texto'} ${index + 1}`,
-              block.type !== 'image' && block.type !== 'chart',
+              `Selecionar ${block.type === 'image' ? 'imagem' : block.type === 'chart' ? 'gráfico' : block.type === 'diagram' ? 'diagrama' : 'bloco de texto'} ${index + 1}`,
+              block.type !== 'image' && block.type !== 'chart' && block.type !== 'diagram',
             )}
             data-block-id={block.id}
           >
@@ -1136,10 +1421,10 @@ export function SlideCanvas({
                   {image?.src ? (
                     <image
                       href={image.src}
-                      x={imageX}
-                      y={imageY}
-                      width={Math.max(1, imageW)}
-                      height={Math.max(1, imageH)}
+                      x={imageFrame.x}
+                      y={imageFrame.y}
+                      width={Math.max(1, imageFrame.w)}
+                      height={Math.max(1, imageFrame.h)}
                       preserveAspectRatio={
                         natural
                           ? 'none'
@@ -1167,11 +1452,20 @@ export function SlideCanvas({
                 id={id}
                 animate={animateCharts}
                 animationKey={animationKey}
+                family={bodyFamily}
+              />
+            ) : block.type === 'diagram' ? (
+              <DiagramBlock
+                diagram={block.diagram ?? { type: 'process', items: [], source: '' }}
+                title={block.content}
+                rect={placement}
+                family={bodyFamily}
+                colors={colors}
               />
             ) : (
-              <TextBlock placement={placement} colors={colors} />
+              <TextBlock placement={placement} colors={colors} family={bodyFamily} />
             )}
-            {onSelect && (
+            {onSelect && !(block.type === 'chart' && !getLoadedChartRenderer()) && (
               <rect
                 x={x}
                 y={y}
@@ -1189,7 +1483,7 @@ export function SlideCanvas({
                 height={Math.max(1, h + 6)}
                 rx="19"
                 fill="none"
-                stroke="#7367EC"
+                stroke="#2563EB"
                 strokeWidth="3"
               />
             )}
@@ -1204,22 +1498,40 @@ export function SlideCanvas({
         stroke={colors.fg}
         strokeOpacity={theme.id === 'editorial' ? 0.26 : 0.1}
       />
-      <rect
-        x="64"
-        y="695"
-        width={theme.id === 'editorial' ? 34 : 18}
-        height="3"
-        rx="1.5"
-        fill={colors.accent}
-      />
-      {slide.sourcePages.length > 0 && (
-        <text
-          x="105"
-          y="703"
-          fill={colors.muted}
-          fontFamily="Arial, sans-serif"
-          fontSize="11"
-        >{`Fonte: PDF · ${slide.sourcePages.length === 1 ? 'p.' : 'pp.'} ${slide.sourcePages.join(', ')}`}</text>
+      {brand?.logo ? (
+        <image
+          href={brand.logo.src}
+          x="64"
+          y="685"
+          width="80"
+          height="28"
+          preserveAspectRatio="xMinYMid meet"
+          aria-label={brand.logo.alt || brand.name}
+        />
+      ) : (
+        <rect
+          x="64"
+          y="695"
+          width={theme.id === 'editorial' ? 34 : 18}
+          height="3"
+          rx="1.5"
+          fill={colors.accent}
+        />
+      )}
+      {footerContent(slide, brand) && (
+        <text fill={colors.muted} fontFamily={bodyFamily} fontSize="11">
+          {wrap(footerContent(slide, brand), brand?.logo ? 915 : 1015, 11, bodyFamily).map(
+            (line, index, lines) => (
+              <tspan
+                key={index}
+                x={brand?.logo ? 160 : 105}
+                y={lines.length === 1 ? 703 : 689 + index * 14}
+              >
+                {line}
+              </tspan>
+            ),
+          )}
+        </text>
       )}
       {slideNumber !== undefined && (
         <text
@@ -1227,7 +1539,7 @@ export function SlideCanvas({
           y="704"
           textAnchor="end"
           fill={colors.muted}
-          fontFamily="Arial, sans-serif"
+          fontFamily={bodyFamily}
           fontSize="12"
           letterSpacing="1"
         >

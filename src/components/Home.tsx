@@ -556,7 +556,12 @@ function DeckCard({
         onClick={() => onOpen(deck)}
         aria-label={'Abrir ' + deck.title}
       >
-        <SlideCanvas slide={deck.slides[0]} theme={getTheme(deck.themeId)} accent={deck.accent} />
+        <SlideCanvas
+          slide={deck.slides[0]}
+          theme={getTheme(deck.themeId)}
+          accent={deck.accent}
+          brand={deck.brand}
+        />
         <span className="deck-open">
           Abrir apresentação <ArrowUpRight size={15} />
         </span>

@@ -1,0 +1,551 @@
+{
+  "schemaVersion": 1,
+  "id": "3073e349-9c8f-4add-984f-9eac7d75fccd",
+  "title": "Zetta · prova de PDF pesquisável",
+  "createdAt": "2026-10-22T03:56:38.660Z",
+  "updatedAt": "2026-10-22T03:56:39.006Z",
+  "themeId": "minimal",
+  "accent": "#2563EB",
+  "slides": [
+    {
+      "id": "4762bf48-a81e-4642-8df0-737df5af6f33",
+      "title": "Ação, visão e organização.",
+      "eyebrow": "ZETTA · LABORATÓRIO DE GRÁFICOS",
+      "layout": "cover",
+      "blocks": [
+        {
+          "id": "351f34a4-2cc4-474b-9f33-ac1a00f0589e",
+          "type": "text",
+          "content": "São Paulo · conteúdo editável\nR$ 1.234,56 · variação de -8,5%\n€ 24,99 · ç ã é ô ü"
+        },
+        {
+          "id": "fe51425c-51d9-426d-b169-641f07706b88",
+          "type": "image",
+          "content": "",
+          "image": {
+            "alt": "Padrão de teste fictício: três faixas coloridas",
+            "illustration": "growth",
+            "fit": "cover",
+            "position": 50,
+            "seed": 4,
+            "src": "data:image/png;base64,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",
+            "crop": {
+              "x": 75,
+              "y": 20,
+              "zoom": 1.8
+            }
+          }
+        }
+      ],
+      "notes": "Apresentação de demonstração. Os dados são fictícios e não representam uma empresa real.",
+      "sourcePages": []
+    },
+    {
+      "id": "de6d9005-3f8c-4991-accf-9c35675a31f4",
+      "title": "Compare resultados com clareza.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "005c92f9-891a-4d66-bfb8-76a0347f2adc",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "bar",
+            "data": [
+              {
+                "label": "Jan",
+                "value": 120000
+              },
+              {
+                "label": "Fev",
+                "value": 138000
+              },
+              {
+                "label": "Mar",
+                "value": 152000
+              },
+              {
+                "label": "Abr",
+                "value": 167000
+              },
+              {
+                "label": "Mai",
+                "value": 184000
+              },
+              {
+                "label": "Jun",
+                "value": 210000
+              }
+            ],
+            "unit": "R$",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Receita",
+            "additionalSeries": [
+              {
+                "name": "Despesas",
+                "values": [94000, 104000, 111000, 118000, 129000, 143000]
+              },
+              {
+                "name": "Lucro",
+                "values": [26000, 34000, 41000, 49000, 55000, 67000]
+              }
+            ],
+            "animate": true,
+            "showValues": false
+          }
+        }
+      ],
+      "notes": "Colunas com três séries: receita, despesas e lucro. Os números abaixo são fictícios.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Receita\";\"Despesas\";\"Lucro\"\n\"Jan\";120000;94000;26000\n\"Fev\";138000;104000;34000\n\"Mar\";152000;111000;41000\n\"Abr\";167000;118000;49000\n\"Mai\";184000;129000;55000\n\"Jun\";210000;143000;67000",
+      "sourcePages": []
+    },
+    {
+      "id": "8cd494b2-2a30-42b0-9849-2a3b27e4fede",
+      "title": "Dê espaço aos nomes.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "d8fa6629-35e8-4640-821f-800f10c6d3e4",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "horizontalBar",
+            "data": [
+              {
+                "label": "Busca orgânica",
+                "value": 84
+              },
+              {
+                "label": "Indicações",
+                "value": 67
+              },
+              {
+                "label": "Redes sociais",
+                "value": 52
+              },
+              {
+                "label": "Eventos",
+                "value": 38
+              },
+              {
+                "label": "Prospecção",
+                "value": 27
+              }
+            ],
+            "unit": "",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Oportunidades",
+            "animate": true,
+            "showValues": true
+          }
+        }
+      ],
+      "notes": "Barras horizontais tornam a comparação entre canais fácil de ler.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Oportunidades\"\n\"Busca orgânica\";84\n\"Indicações\";67\n\"Redes sociais\";52\n\"Eventos\";38\n\"Prospecção\";27",
+      "sourcePages": []
+    },
+    {
+      "id": "03b38852-84ce-483e-974c-dfb4dc68690b",
+      "title": "Conte a evolução ao longo do tempo.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "75ac771c-29ed-458d-a5dd-725646944c5c",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "line",
+            "data": [
+              {
+                "label": "Jan",
+                "value": 48
+              },
+              {
+                "label": "Fev",
+                "value": 63
+              },
+              {
+                "label": "Mar",
+                "value": 59
+              },
+              {
+                "label": "Abr",
+                "value": 81
+              },
+              {
+                "label": "Mai",
+                "value": 96
+              },
+              {
+                "label": "Jun",
+                "value": 112
+              }
+            ],
+            "unit": "",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Clientes",
+            "animate": true,
+            "showValues": true
+          }
+        }
+      ],
+      "notes": "Linhas conectam períodos consecutivos. Os dados continuam editáveis.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Clientes\"\n\"Jan\";48\n\"Fev\";63\n\"Mar\";59\n\"Abr\";81\n\"Mai\";96\n\"Jun\";112",
+      "sourcePages": []
+    },
+    {
+      "id": "b4a4a994-9f7e-48ca-af67-87cb5da6b4f1",
+      "title": "Mostre oscilações sem esconder quedas.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "c7c3e629-0ffa-4376-840a-1cf4acab8f8d",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "area",
+            "data": [
+              {
+                "label": "Jan",
+                "value": 8000
+              },
+              {
+                "label": "Fev",
+                "value": 14000
+              },
+              {
+                "label": "Mar",
+                "value": -6000
+              },
+              {
+                "label": "Abr",
+                "value": 10000
+              },
+              {
+                "label": "Mai",
+                "value": 16000
+              },
+              {
+                "label": "Jun",
+                "value": 22000
+              }
+            ],
+            "unit": "R$",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Saldo",
+            "animate": true,
+            "showValues": true
+          }
+        }
+      ],
+      "notes": "O gráfico de área preserva a linha de zero e os valores negativos.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Saldo\"\n\"Jan\";8000\n\"Fev\";14000\n\"Mar\";-6000\n\"Abr\";10000\n\"Mai\";16000\n\"Jun\";22000",
+      "sourcePages": []
+    },
+    {
+      "id": "64c7cbd5-91b1-40dd-b2e4-228893d36c6a",
+      "title": "Cada parte tem seu lugar.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "faafd358-e06f-4bf1-bfe2-fca2756a11ce",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "pie",
+            "data": [
+              {
+                "label": "Produto",
+                "value": 40
+              },
+              {
+                "label": "Operação",
+                "value": 25
+              },
+              {
+                "label": "Marketing",
+                "value": 20
+              },
+              {
+                "label": "Pessoas",
+                "value": 15
+              }
+            ],
+            "unit": "%",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Distribuição",
+            "animate": true,
+            "showValues": true
+          }
+        }
+      ],
+      "notes": "Pizza representa partes de um mesmo total. Esta distribuição de exemplo soma 100%.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Distribuição\"\n\"Produto\";40\n\"Operação\";25\n\"Marketing\";20\n\"Pessoas\";15",
+      "sourcePages": []
+    },
+    {
+      "id": "5681c53b-debf-499d-a173-dd5850273686",
+      "title": "Uma visão clara da composição.",
+      "eyebrow": "DADOS FICTÍCIOS · EDITE PARA USAR",
+      "layout": "chart",
+      "blocks": [
+        {
+          "id": "c36e581c-74d1-47e3-85be-1c58bf0dba49",
+          "type": "chart",
+          "content": "",
+          "chart": {
+            "type": "donut",
+            "data": [
+              {
+                "label": "Plano Essencial",
+                "value": 96
+              },
+              {
+                "label": "Plano Equipe",
+                "value": 64
+              },
+              {
+                "label": "Plano Negócio",
+                "value": 48
+              },
+              {
+                "label": "Plano Empresa",
+                "value": 32
+              }
+            ],
+            "unit": "",
+            "source": "Dados fictícios para experimentar o Zetta",
+            "seriesName": "Clientes",
+            "animate": true,
+            "showValues": true
+          }
+        }
+      ],
+      "notes": "Rosca usa uma única série, com valores não negativos e total maior que zero.\n\nFonte: Dados fictícios para experimentar o Zetta\n\n\"Categoria\";\"Clientes\"\n\"Plano Essencial\";96\n\"Plano Equipe\";64\n\"Plano Negócio\";48\n\"Plano Empresa\";32",
+      "sourcePages": []
+    },
+    {
+      "eyebrow": "BLOCOS EDITÁVEIS · DADOS FICTÍCIOS",
+      "layout": "bullets",
+      "notes": "Teste de preservação de dados.",
+      "sourcePages": [],
+      "id": "qa-process",
+      "title": "Do contexto à apresentação.",
+      "blocks": [
+        {
+          "id": "diagram-process",
+          "type": "diagram",
+          "content": "Fluxo de trabalho",
+          "diagram": {
+            "type": "process",
+            "source": "Dados fictícios de verificação",
+            "items": [
+              {
+                "id": "process-0",
+                "title": "Ação e organização",
+                "label": "22/10/2026",
+                "value": "18,5%",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "process-1",
+                "title": "Revisão do conteúdo",
+                "label": "28/10/2026",
+                "value": "R$ 240",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "process-2",
+                "title": "Apresentação final",
+                "label": "04/11/2026",
+                "value": "Concluído",
+                "description": "Revisão em português com informação da fonte."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "eyebrow": "BLOCOS EDITÁVEIS · DADOS FICTÍCIOS",
+      "layout": "bullets",
+      "notes": "Teste de preservação de dados.",
+      "sourcePages": [],
+      "id": "qa-timeline",
+      "title": "Um plano que fica visível.",
+      "blocks": [
+        {
+          "id": "diagram-timeline",
+          "type": "diagram",
+          "content": "Marcos do projeto",
+          "diagram": {
+            "type": "timeline",
+            "source": "Dados fictícios de verificação",
+            "items": [
+              {
+                "id": "timeline-0",
+                "title": "Ação e organização",
+                "label": "22/10/2026",
+                "value": "18,5%",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "timeline-1",
+                "title": "Revisão do conteúdo",
+                "label": "28/10/2026",
+                "value": "R$ 240",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "timeline-2",
+                "title": "Apresentação final",
+                "label": "04/11/2026",
+                "value": "Concluído",
+                "description": "Revisão em português com informação da fonte."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "eyebrow": "BLOCOS EDITÁVEIS · DADOS FICTÍCIOS",
+      "layout": "bullets",
+      "notes": "Teste de preservação de dados.",
+      "sourcePages": [],
+      "id": "qa-comparison",
+      "title": "Duas propostas, lado a lado.",
+      "blocks": [
+        {
+          "id": "diagram-comparison",
+          "type": "diagram",
+          "content": "Critérios da decisão",
+          "diagram": {
+            "type": "comparison",
+            "source": "Dados fictícios de verificação",
+            "items": [
+              {
+                "id": "comparison-0",
+                "title": "Ação e organização",
+                "label": "22/10/2026",
+                "value": "18,5%",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "comparison-1",
+                "title": "Revisão do conteúdo",
+                "label": "28/10/2026",
+                "value": "R$ 240",
+                "description": "Revisão em português com informação da fonte."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "eyebrow": "BLOCOS EDITÁVEIS · DADOS FICTÍCIOS",
+      "layout": "bullets",
+      "notes": "Teste de preservação de dados.",
+      "sourcePages": [],
+      "id": "qa-metrics",
+      "title": "Indicadores sem perder contexto.",
+      "blocks": [
+        {
+          "id": "diagram-metrics",
+          "type": "diagram",
+          "content": "Resultados do período",
+          "diagram": {
+            "type": "metrics",
+            "source": "Dados fictícios de verificação",
+            "items": [
+              {
+                "id": "metrics-0",
+                "title": "Ação e organização",
+                "label": "22/10/2026",
+                "value": "R$ 1.250,75",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "metrics-1",
+                "title": "Revisão do conteúdo",
+                "label": "28/10/2026",
+                "value": "18,5%",
+                "description": "Revisão em português com informação da fonte."
+              },
+              {
+                "id": "metrics-2",
+                "title": "Apresentação final",
+                "label": "04/11/2026",
+                "value": "—",
+                "description": "Revisão em português com informação da fonte."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "eyebrow": "BLOCOS EDITÁVEIS · DADOS FICTÍCIOS",
+      "layout": "bullets",
+      "notes": "Teste de preservação de dados.",
+      "sourcePages": [],
+      "id": "qa-serif",
+      "title": "Uma fonte para cada identidade.",
+      "appearance": {
+        "themeId": "editorial",
+        "accent": "#A3543D",
+        "brand": {
+          "id": "qa-serif-brand",
+          "name": "Marca de prova",
+          "colors": {
+            "accent": "#A3543D",
+            "background": "#F5F0E7",
+            "foreground": "#3B312B"
+          },
+          "font": "serif",
+          "footer": "Ação e organização · São Paulo · dados fictícios"
+        }
+      },
+      "blocks": [
+        {
+          "id": "serif-text",
+          "type": "text",
+          "content": "Ação e organização em São Paulo.\nValores: R$ 1.234,56, -8,5% e € 24,99.\nAcentos e pontuação permanecem pesquisáveis."
+        },
+        {
+          "id": "serif-art",
+          "type": "image",
+          "content": "",
+          "image": {
+            "alt": "Ilustração procedural",
+            "illustration": "orbit",
+            "fit": "cover",
+            "position": 50,
+            "seed": 6
+          }
+        }
+      ]
+    }
+  ],
+  "source": {
+    "text": "Compare resultados com clareza.\nColunas com três séries: receita, despesas e lucro. Os números abaixo são fictícios.\n\"Categoria\";\"Receita\";\"Despesas\";\"Lucro\"\n\"Jan\";120000;94000;26000\n\"Fev\";138000;104000;34000\n\"Mar\";152000;111000;41000\n\"Abr\";167000;118000;49000\n\"Mai\";184000;129000;55000\n\"Jun\";210000;143000;67000\n\nDê espaço aos nomes.\nBarras horizontais tornam a comparação entre canais fácil de ler.\n\"Categoria\";\"Oportunidades\"\n\"Busca orgânica\";84\n\"Indicações\";67\n\"Redes sociais\";52\n\"Eventos\";38\n\"Prospecção\";27\n\nConte a evolução ao longo do tempo.\nLinhas conectam períodos consecutivos. Os dados continuam editáveis.\n\"Categoria\";\"Clientes\"\n\"Jan\";48\n\"Fev\";63\n\"Mar\";59\n\"Abr\";81\n\"Mai\";96\n\"Jun\";112\n\nMostre oscilações sem esconder quedas.\nO gráfico de área preserva a linha de zero e os valores negativos.\n\"Categoria\";\"Saldo\"\n\"Jan\";8000\n\"Fev\";14000\n\"Mar\";-6000\n\"Abr\";10000\n\"Mai\";16000\n\"Jun\";22000\n\nCada parte tem seu lugar.\nPizza representa partes de um mesmo total. Esta distribuição de exemplo soma 100%.\n\"Categoria\";\"Distribuição\"\n\"Produto\";40\n\"Operação\";25\n\"Marketing\";20\n\"Pessoas\";15\n\nUma visão clara da composição.\nRosca usa uma única série, com valores não negativos e total maior que zero.\n\"Categoria\";\"Clientes\"\n\"Plano Essencial\";96\n\"Plano Equipe\";64\n\"Plano Negócio\";48\n\"Plano Empresa\";32",
+    "name": "Dados fictícios para experimentar o Zetta",
+    "kind": "example"
+  },
+  "settings": {
+    "density": "balanced",
+    "composition": "rich"
+  },
+  "brand": {
+    "id": "qa-brand",
+    "name": "Marca de prova",
+    "colors": {
+      "accent": "#2563EB",
+      "background": "#FFFFFF",
+      "foreground": "#0F172A"
+    },
+    "font": "sans",
+    "footer": "Ação e organização · São Paulo · dados fictícios"
+  }
+}

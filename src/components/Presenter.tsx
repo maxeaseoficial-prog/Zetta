@@ -133,6 +133,7 @@ export function Presenter({
             slide={deck.slides[index]}
             theme={getTheme(deck.themeId)}
             accent={deck.accent}
+            brand={deck.brand}
             slideNumber={index + 1}
             totalSlides={deck.slides.length}
             animateCharts={animatedCharts}

@@ -41,6 +41,7 @@ test('six chart types stay editable, animate only in presentation and export a c
   await page.getByRole('button', { name: 'Voltar ao editor' }).click()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Baixar PDF', exact: true }).click()
+  await page.getByRole('button', { name: 'Exportar PDF pesquisável', exact: true }).click()
   const download = await downloadPromise
   const file = testInfo.outputPath('charts-laboratory.pdf')
   await download.saveAs(file)

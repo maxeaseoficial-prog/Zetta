@@ -6,11 +6,13 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  padded = true,
 }: {
   title: string
   children: ReactNode
   onClose: () => void
   wide?: boolean
+  padded?: boolean
 }) {
   const id = useId()
   const panel = useRef<HTMLDivElement>(null)
@@ -77,7 +79,7 @@ export function Modal({
             <X size={20} />
           </button>
         </div>
-        {children}
+        <div className={'modal-body' + (padded ? ' modal-body-padded' : '')}>{children}</div>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Deck } from '../types'
+import type { BrandKit, Deck, Slide } from '../types'
 
 export const MAX_BACKUP_BYTES = 32 * 1024 * 1024
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -14,6 +14,8 @@ const color = z
   .string()
   .regex(/^#(?:[a-fA-F0-9]{3}|[a-fA-F0-9]{6}|[a-fA-F0-9]{8})$/, 'Use uma cor hexadecimal válida.')
 const background = z.union([color, z.literal('transparent')])
+const themeId = z.enum(['minimal', 'executive', 'editorial', 'bold', 'dark', 'classroom'])
+const pageReferences = z.array(z.number().int().min(1).max(100)).max(100)
 
 /** Only embedded raster data is accepted; MIME and file signature must agree. */
 export function isSafeImageDataUrl(value: string): boolean {
@@ -40,20 +42,77 @@ const styleSchema = z.strictObject({
   bold: z.boolean().optional(),
   align: z.enum(['left', 'center', 'right']).optional(),
 })
+const embeddedImage = z
+  .string()
+  .refine(
+    isSafeImageDataUrl,
+    'A imagem deve ser um arquivo PNG, JPEG ou WebP incorporado de até 5 MB. URLs externas e SVG não são aceitos.',
+  )
+const brandSchema = z.strictObject({
+  id,
+  name: z.string().trim().min(1).max(100),
+  logo: z.strictObject({ src: embeddedImage, alt: z.string().max(1_000) }).optional(),
+  colors: z.strictObject({ accent: color, background: color, foreground: color }),
+  font: z.enum(['sans', 'serif']),
+  footer: z.string().max(160),
+})
+const appearanceSchema = z.strictObject({
+  themeId,
+  accent: color,
+  brand: brandSchema.optional(),
+})
+const briefSchema = z.strictObject({
+  purpose: z.enum(['general', 'proposal', 'report', 'lesson', 'institutional']),
+  audience: z.enum(['general', 'decision-makers', 'technical', 'students']),
+  durationMinutes: z.number().int().min(1).max(180).optional(),
+})
+const originSchema = z.strictObject({
+  kind: z.enum(['source', 'manual', 'editorial', 'reused']),
+  sourceName: z.string().max(1_000),
+  sourceKind: z.enum(['text', 'pdf', 'example', 'manual']),
+  excerpt: z.string().max(MAX_SOURCE_LENGTH),
+  pages: pageReferences,
+  baseline: z.string().max(100_000).optional(),
+})
 const imageSchema = z.strictObject({
-  src: z
-    .string()
-    .refine(
-      isSafeImageDataUrl,
-      'A imagem deve ser um arquivo PNG, JPEG ou WebP incorporado de até 5 MB. URLs externas e SVG não são aceitos.',
-    )
-    .optional(),
+  src: embeddedImage.optional(),
   alt: z.string().max(1_000),
   illustration: z.enum(['orbit', 'layers', 'growth', 'waves', 'grid']),
   fit: z.enum(['cover', 'contain']),
   position: z.number().finite().min(0).max(100),
   seed: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER),
+  crop: z
+    .strictObject({
+      x: z.number().finite().min(0).max(100),
+      y: z.number().finite().min(0).max(100),
+      zoom: z.number().finite().min(1).max(4),
+    })
+    .optional(),
 })
+const diagramSchema = z
+  .strictObject({
+    type: z.enum(['process', 'timeline', 'comparison', 'metrics']),
+    items: z
+      .array(
+        z.strictObject({
+          id,
+          title: z.string().max(300),
+          description: z.string().max(5_000),
+          label: z.string().max(120).optional(),
+          value: z.string().max(120).optional(),
+        }),
+      )
+      .max(6),
+    source: z.string().max(5_000),
+  })
+  .superRefine((diagram, context) => {
+    if (new Set(diagram.items.map((item) => item.id)).size !== diagram.items.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['items'],
+        message: 'Identificador de item de diagrama duplicado.',
+      })
+  })
 const chartSchema = z
   .strictObject({
     type: z.enum(['bar', 'horizontalBar', 'line', 'area', 'pie', 'donut']),
@@ -103,11 +162,12 @@ const chartSchema = z
 const blockSchema = z
   .strictObject({
     id,
-    type: z.enum(['text', 'bullets', 'image', 'callout', 'chart']),
+    type: z.enum(['text', 'bullets', 'image', 'callout', 'chart', 'diagram']),
     content: z.string().max(100_000),
     style: styleSchema.optional(),
     image: imageSchema.optional(),
     chart: chartSchema.optional(),
+    diagram: diagramSchema.optional(),
   })
   .superRefine((block, context) => {
     if (block.type === 'image' && !block.image)
@@ -118,6 +178,12 @@ const blockSchema = z
       })
     if (block.type === 'chart' && !block.chart)
       context.addIssue({ code: 'custom', path: ['chart'], message: 'Bloco de gráfico sem dados.' })
+    if (block.type === 'diagram' && !block.diagram)
+      context.addIssue({
+        code: 'custom',
+        path: ['diagram'],
+        message: 'Bloco de diagrama sem configuração.',
+      })
     if (
       block.chart &&
       new Set(block.chart.data.map((datum) => datum.label.trim().toLocaleLowerCase('pt-BR')))
@@ -129,17 +195,51 @@ const blockSchema = z
         message: 'Rótulos de gráfico duplicados.',
       })
   })
-const slideSchema = z.strictObject({
-  id,
-  title: z.string().max(300),
-  eyebrow: z.string().max(300),
-  layout: z.enum(['cover', 'split', 'bullets', 'columns', 'quote', 'chart', 'section', 'closing']),
-  blocks: z.array(blockSchema).max(6),
-  notes: z.string().max(MAX_SOURCE_LENGTH + 10_000),
-  sourcePages: z.array(z.number().int().min(1).max(100)).max(100),
-  background: background.optional(),
-  titleStyle: styleSchema.optional(),
-})
+const slideSchema = z
+  .strictObject({
+    id,
+    title: z.string().max(300),
+    eyebrow: z.string().max(300),
+    layout: z.enum([
+      'cover',
+      'split',
+      'bullets',
+      'columns',
+      'quote',
+      'chart',
+      'section',
+      'closing',
+    ]),
+    blocks: z.array(blockSchema).max(6),
+    notes: z.string().max(MAX_SOURCE_LENGTH + 10_000),
+    sourcePages: pageReferences,
+    background: background.optional(),
+    titleStyle: styleSchema.optional(),
+    appearance: appearanceSchema.optional(),
+    origin: originSchema.optional(),
+    requirements: z.array(z.string().max(1_000)).max(20).optional(),
+  })
+  .superRefine((slide, context) => {
+    const ids = [slide.id, ...slide.blocks.map((block) => block.id)]
+    if (new Set(ids).size !== ids.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['blocks'],
+        message: 'Identificador de bloco duplicado.',
+      })
+    if (new Set(slide.sourcePages).size !== slide.sourcePages.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['sourcePages'],
+        message: 'Referência de página duplicada.',
+      })
+    if (slide.origin && new Set(slide.origin.pages).size !== slide.origin.pages.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['origin', 'pages'],
+        message: 'Referência de origem duplicada.',
+      })
+  })
 export const deckSchema = z
   .strictObject({
     schemaVersion: z.literal(1),
@@ -147,8 +247,9 @@ export const deckSchema = z
     title: z.string().min(1).max(300),
     createdAt: z.iso.datetime({ offset: true }),
     updatedAt: z.iso.datetime({ offset: true }),
-    themeId: z.enum(['minimal', 'executive', 'editorial', 'bold', 'dark', 'classroom']),
+    themeId,
     accent: color,
+    brand: brandSchema.optional(),
     slides: z.array(slideSchema).min(1).max(50),
     source: z.strictObject({
       text: z.string().max(MAX_SOURCE_LENGTH),
@@ -167,11 +268,13 @@ export const deckSchema = z
     settings: z.strictObject({
       density: z.enum(['short', 'balanced', 'detailed']),
       composition: z.enum(['simple', 'rich']),
+      brief: briefSchema.optional(),
     }),
   })
   .superRefine((deck, context) => {
     const seen = new Set<string>([deck.id])
-    let imageBytes = 0
+    const imageSize = (src?: string) => (src ? ((src.split(',')[1]?.length ?? 0) * 3) / 4 : 0)
+    let imageBytes = imageSize(deck.brand?.logo?.src)
     const pageNumbers = new Set(deck.source.pages?.map((page) => page.page))
     if (deck.source.pages && pageNumbers.size !== deck.source.pages.length)
       context.addIssue({
@@ -188,6 +291,7 @@ export const deckSchema = z
         message: 'O texto das páginas ultrapassa o limite de 500 mil caracteres.',
       })
     deck.slides.forEach((slide, slideIndex) => {
+      imageBytes += imageSize(slide.appearance?.brand?.logo?.src)
       if (seen.has(slide.id))
         context.addIssue({
           code: 'custom',
@@ -233,6 +337,18 @@ export function validateDeck(value: unknown): Deck {
     const path = issue.path.length ? ` (${issue.path.join('.')})` : ''
     throw new Error(`Apresentação inválida${path}: ${issue.message}`)
   }
+  return result.data
+}
+
+export function validateBrandKit(value: unknown): BrandKit {
+  const result = brandSchema.safeParse(value)
+  if (!result.success) throw new Error(`Marca inválida: ${result.error.issues[0].message}`)
+  return result.data
+}
+
+export function validateSlide(value: unknown): Slide {
+  const result = slideSchema.safeParse(value)
+  if (!result.success) throw new Error(`Slide inválido: ${result.error.issues[0].message}`)
   return result.data
 }
 

@@ -57,6 +57,7 @@ test('text → outline → edit → undo → save/reopen → presentation → PD
   await page.getByRole('button', { name: 'Voltar ao editor' }).click()
   const pdfPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Baixar PDF', exact: true }).click()
+  await page.getByRole('button', { name: 'Exportar PDF pesquisável', exact: true }).click()
   const pdf = await pdfPromise
   const pdfPath = testInfo.outputPath('generated.pdf')
   await pdf.saveAs(pdfPath)
@@ -97,6 +98,7 @@ test('digital PDF import is local and scanned PDF receives an actionable error',
   await expect(page.getByLabel('Título do tópico 1')).toBeVisible()
   await page.getByRole('button', { name: 'Criar minha apresentação' }).click()
   await page.getByRole('button', { name: 'Fonte original', exact: true }).click()
+  await page.getByText('Ver todo o conteúdo original', { exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('Página 1')
   await expect(page.getByRole('dialog')).toContainText('Página 2')
   await expect(page.getByRole('dialog')).toContainText('organizar o processo de vendas')

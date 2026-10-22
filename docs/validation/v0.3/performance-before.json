@@ -1,0 +1,49 @@
+{
+  "commit": "4f444c289d9eeb584be66c9949ef264739b7686c",
+  "environment": {
+    "browser": "141.0.7390.37",
+    "viewport": "1440x1000",
+    "origin": "loopback HTTP, production build, fresh context per sample",
+    "trials": 3
+  },
+  "main": {
+    "file": "/assets/index-B2dwt35C.js",
+    "bytes": 1007499,
+    "gzip": 334046
+  },
+  "samples": [
+    {
+      "homeReady": 306.951858,
+      "labReady": 313.36232400000006,
+      "editReady": 47.04540999999995,
+      "resources": [
+        {
+          "name": "index-B2dwt35C.js",
+          "bytes": 1007499
+        }
+      ]
+    },
+    {
+      "homeReady": 291.9578019999999,
+      "labReady": 276.8960609999999,
+      "editReady": 40.0450350000001,
+      "resources": [
+        {
+          "name": "index-B2dwt35C.js",
+          "bytes": 1007499
+        }
+      ]
+    },
+    {
+      "homeReady": 216.3692000000001,
+      "labReady": 299.0560260000002,
+      "editReady": 38.67674100000022,
+      "resources": [
+        {
+          "name": "index-B2dwt35C.js",
+          "bytes": 1007499
+        }
+      ]
+    }
+  ]
+}

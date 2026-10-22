@@ -1,5 +1,7 @@
 import type {
   ChartDatum,
+  ChartConfig,
+  ChartType,
   Deck,
   GenerationOptions,
   IllustrationKind,
@@ -9,6 +11,13 @@ import type {
   SourcePage,
   ThemeId,
 } from '../types'
+import {
+  ChartInputError,
+  parseChartInput,
+  parseLegacyChartInput,
+  type ParsedChartInput,
+} from './chartData'
+import { getChartWarnings } from './chartRenderer'
 
 /** The first engine is deterministic: it selects source excerpts and layouts, not AI-written facts. */
 export const MAX_SOURCE_CHARACTERS = 500_000
@@ -80,6 +89,23 @@ interface SourceUnit {
   pages: number[]
 }
 
+function tabularLine(line: string): boolean {
+  return /[;|\t]/.test(line) || /,\s*"?(?:[+\-(]?\d|R\$)/.test(line)
+}
+
+/** Keep an apparent table intact: splitting it mid-row could chart only part of the supplied data. */
+function looksTabular(text: string): boolean {
+  const lines = text
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+  return (
+    lines.length >= 2 &&
+    ((tabularLine(lines[0]) && tabularLine(lines[1])) ||
+      (lines.length >= 3 && tabularLine(lines[1]) && tabularLine(lines[2])))
+  )
+}
+
 function sourceUnits(text: string, pages?: SourcePage[]): SourceUnit[] {
   const matchedPages =
     pages?.length && normalized(pages.map((page) => page.text).join('\n\n')) === normalized(text)
@@ -91,7 +117,7 @@ function sourceUnits(text: string, pages?: SourcePage[]): SourceUnit[] {
       .split(/\n\s*\n/)
       .filter((part) => part.trim())
       .flatMap((part) =>
-        splitLongText(part).map((chunk) => ({
+        (looksTabular(part) ? [part.trim()] : splitLongText(part)).map((chunk) => ({
           text: chunk,
           pages: source.pages.length
             ? [...source.pages]
@@ -118,7 +144,9 @@ function titleFor(text: string, index: number): string {
     firstLine.length >= 3 &&
     firstLine.length <= 90 &&
     !/^\s*(?:[-•*]|\d+[.)])\s/.test(rawFirstLine) &&
-    !/[:;|\t].*\d/.test(firstLine)
+    !/[;|\t]/.test(firstLine) &&
+    !/[:,].*\d/.test(firstLine) &&
+    !(firstLine.includes(',') && looksTabular(text))
   )
     return firstLine.replace(/:$/, '')
   const thematic: Array<[RegExp, string]> = [
@@ -203,8 +231,8 @@ export function getGenerationWarnings(
     )
   if (
     outline.some((item) => {
-      const table = parseChartTable(contentWithoutHeading(item))
-      return table && table.data.length >= 2 && !chartFitsDefaultLayout(table)
+      const { table, categoryLimit } = chartTableForGeneration(contentWithoutHeading(item))
+      return categoryLimit || (table && table.data.length >= 2 && !chartFitsDefaultLayout(table))
     })
   )
     warnings.push(
@@ -270,24 +298,85 @@ function visibleBullets(lines: string[], options: GenerationOptions): string {
   return selected.join('\n')
 }
 
-interface ChartTable {
-  data: ChartDatum[]
-  unit: string
+function chartTableForGeneration(text: string): {
+  table: ParsedChartInput | null
+  categoryLimit: boolean
+} {
+  try {
+    return { table: parseChartInput(text), categoryLimit: false }
+  } catch (error) {
+    // Legacy syntax (including label:value) is retained, but generation still applies the 12-category limit.
+    return {
+      table: /:\s*(?:R\$\s*)?[+(−-]?\d/.test(text) ? parseLegacyChartInput(text) : null,
+      categoryLimit: error instanceof ChartInputError && error.code === 'category-limit',
+    }
+  }
 }
 
-/** Conservative allowance for the full-width chart; never shorten labels or round source values. */
-function chartFitsDefaultLayout(table: ChartTable): boolean {
-  if (table.data.length < 2 || table.data.length > 16) return false
-  const categoryWidth = 900 / table.data.length
-  return table.data.every((datum) => {
-    const value = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 20 }).format(datum.value)
-    const visibleValue =
-      table.unit === '%' ? `${value}%` : table.unit === 'R$' ? `R$ ${value}` : value
-    return (
-      Array.from(datum.label).length * 12 <= Math.max(12, categoryWidth - 8) * 2 &&
-      Array.from(visibleValue).length * 9 <= categoryWidth - 8
+function temporalPosition(label: string): { kind: string; value: number } | null {
+  const month = label.trim().toLocaleLowerCase('pt-BR').replace(/\.$/, '')
+  const months = [
+    'jan|janeiro|january',
+    'fev|fevereiro|feb|february',
+    'mar|março|marco|march',
+    'abr|abril|apr|april',
+    'mai|maio|may',
+    'jun|junho|june',
+    'jul|julho|july',
+    'ago|agosto|aug|august',
+    'set|setembro|sep|sept|september',
+    'out|outubro|oct|october',
+    'nov|novembro|november',
+    'dez|dezembro|dec|december',
+  ]
+  const index = months.findIndex((names) => names.split('|').includes(month))
+  if (index >= 0) return { kind: 'month', value: index }
+  const iso = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(month)
+  const brazilian = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(month)
+  if (!iso && !brazilian) return null
+  const year = Number(iso?.[1] ?? brazilian![3])
+  const monthNumber = Number(iso?.[2] ?? brazilian![2])
+  const day = Number(iso ? (iso[3] ?? 1) : brazilian![1])
+  const date = new Date(Date.UTC(year, monthNumber - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== monthNumber - 1 ||
+    date.getUTCDate() !== day
+  )
+    return null
+  return { kind: 'date', value: date.getTime() }
+}
+
+/** Source order is never changed: lines require strictly increasing explicit months/dates. */
+function inferredChartType(table: ParsedChartInput): ChartType {
+  const positions = table.data.map((datum) => temporalPosition(datum.label))
+  if (
+    positions.length > 1 &&
+    positions.every(
+      (position, index) =>
+        position &&
+        position.kind === positions[0]?.kind &&
+        (index === 0 || position.value > positions[index - 1]!.value),
     )
-  })
+  )
+    return 'line'
+  // Horizontal bars make category labels over 22 characters easier to read; the renderer checks the final fit.
+  return table.data.some((datum) => Array.from(datum.label).length > 22) ? 'horizontalBar' : 'bar'
+}
+
+function chartConfig(table: ParsedChartInput): ChartConfig {
+  return {
+    ...table,
+    type: inferredChartType(table),
+    source: '',
+    showValues: !table.additionalSeries?.length,
+  }
+}
+
+/** Reuse the actual renderer checks within a conservative full-width chart area. */
+function chartFitsDefaultLayout(table: ParsedChartInput): boolean {
+  if (table.data.length < 2 || table.data.length > 12) return false
+  return getChartWarnings(chartConfig(table), 900, 300).length === 0
 }
 
 function illustration(index: number): SlideBlock {
@@ -313,6 +402,8 @@ function titleOfDeck(text: string, options: GenerationOptions): string {
     return options.title.trim()
   }
   const firstLine = plainHeading(text.split('\n').find((line) => line.trim()) ?? '')
+  if (looksTabular(text) && (tabularLine(firstLine) || firstLine.includes(',')))
+    return 'Dados para apresentar'
   return firstLine.length <= 120 ? firstLine : 'Uma ideia para apresentar'
 }
 
@@ -320,6 +411,8 @@ function contentWithoutHeading(item: OutlineItem): string {
   const lines = item.content.trim().split('\n')
   const first = lines[0] ?? ''
   return !/^\s*(?:[-*•]|\d+[.)])\s/.test(first) &&
+    !tabularLine(first) &&
+    !(first.includes(',') && looksTabular(item.content)) &&
     plainHeading(first) === item.title &&
     lines.length > 1
     ? lines.slice(1).join('\n').trim()
@@ -392,7 +485,7 @@ export function generateDeck(
   ]
   outline.forEach((item, index) => {
     const body = contentWithoutHeading(item)
-    const table = parseChartTable(body)
+    const { table } = chartTableForGeneration(body)
     const isChart = Boolean(table && chartFitsDefaultLayout(table))
     const pages = verifiedSourcePages(item, options)
     const bulletLines = body.split('\n').filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line))
@@ -407,9 +500,7 @@ export function generateDeck(
           type: 'chart',
           content: '',
           chart: {
-            type: 'bar',
-            data: table!.data,
-            unit: table!.unit,
+            ...chartConfig(table!),
             source: pages.length
               ? `Material informado · p. ${pages.join(', ')}`
               : 'Dados informados no material de origem',
@@ -501,117 +592,7 @@ export function createExampleDeck(themeId: ThemeId = 'minimal'): Deck {
   return generateDeck(EXAMPLE_TEXT, buildOutline(EXAMPLE_TEXT, options), options)
 }
 
-interface ParsedNumber {
-  value: number
-  unit: string
-}
-function parsePtNumber(raw: string): ParsedNumber | null {
-  let input = raw.trim().replace(/\u2212/g, '-')
-  let unit = ''
-  if (/^R\$\s*/i.test(input)) {
-    unit = 'R$'
-    input = input.replace(/^R\$\s*/i, '')
-  }
-  if (/%$/.test(input)) {
-    if (unit) return null
-    unit = '%'
-    input = input.slice(0, -1).trim()
-  }
-  const parentheses = /^\(.*\)$/.test(input)
-  if (parentheses) input = input.slice(1, -1).trim()
-  if (parentheses && /^[+-]/.test(input)) return null
-  if (!/^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,8})?$/.test(input)) return null
-  const decimal = input.replace(/\./g, '').replace(',', '.')
-  const value = Number(decimal) * (parentheses ? -1 : 1)
-  if (!Number.isFinite(value) || Math.abs(value) > 1e12) return null
-  const [integer, fraction = ''] = decimal.replace(/^[+-]/, '').split('.')
-  const canonical = `${integer.replace(/^0+(?=\d)/, '')}${fraction.replace(/0+$/, '') ? `.${fraction.replace(/0+$/, '')}` : ''}`
-  // Reject precision loss instead of silently changing a number in the source table.
-  if (
-    Math.abs(value).toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 8 }) !==
-    canonical
-  )
-    return null
-  return { value: Object.is(value, -0) ? 0 : value, unit }
-}
-
-function commaFields(line: string): string[] | null {
-  const fields: string[] = []
-  let field = ''
-  let quoted = false
-  let closedQuote = false
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index]
-    if (quoted) {
-      if (character === '"' && line[index + 1] === '"') {
-        field += '"'
-        index += 1
-      } else if (character === '"') {
-        quoted = false
-        closedQuote = true
-      } else field += character
-    } else if (character === ',') {
-      fields.push(field)
-      field = ''
-      closedQuote = false
-    } else if (character === '"') {
-      if (field.trim() || closedQuote) return null
-      field = ''
-      quoted = true
-    } else {
-      if (closedQuote && !/\s/.test(character)) return null
-      field += character
-    }
-  }
-  if (quoted) return null
-  fields.push(field)
-  return fields
-}
-
-/** Strict two-column data: label;value, label:value, TSV, Markdown table or CSV with quoted decimals. */
-function parseChartTable(text: string): ChartTable | null {
-  const lines = text
-    .trim()
-    .split(/\r?\n/)
-    .filter((line) => line.trim())
-  if (!lines.length || lines.length > 52) return null
-  const data: ChartDatum[] = []
-  const labels = new Set<string>()
-  const units = new Set<string>()
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim()
-    if (index === 1 && /^\|?\s*:?-{3,}:?\s*\|\s*:?-{3,}:?\s*\|?$/.test(line)) continue
-    const parts = line.includes('\t')
-      ? line.split('\t')
-      : line.includes(';')
-        ? line.split(';')
-        : line.includes('|')
-          ? line.replace(/^\|/, '').replace(/\|$/, '').split('|')
-          : line.includes(':')
-            ? line.split(':')
-            : commaFields(line)
-    if (!parts || parts.length !== 2) return null
-    const label = parts[0].trim()
-    const raw = parts[1].trim()
-    if (
-      index === 0 &&
-      /^(categoria|rótulo|rotulo|nome|mês|mes|período|periodo|item|data)$/i.test(label) &&
-      /^(valor|receita|despesa|custo|vendas|total|quantidade|saldo|faturamento|lucro|percentual|porcentagem|%)$/i.test(
-        raw,
-      )
-    )
-      continue
-    const number = parsePtNumber(raw)
-    const key = label.toLocaleLowerCase('pt-BR')
-    if (!label || label.length > 120 || !number || labels.has(key)) return null
-    labels.add(key)
-    units.add(number.unit)
-    if (units.size > 1) return null
-    data.push({ label, value: number.value })
-  }
-  return data.length <= 50 ? { data, unit: units.values().next().value ?? '' } : null
-}
-
+/** Backward-compatible reader: strict two-column PT-BR input, up to 50 categories. */
 export function parseChartData(text: string): ChartDatum[] {
-  return parseChartTable(text)?.data ?? []
+  return parseLegacyChartInput(text)?.data ?? []
 }

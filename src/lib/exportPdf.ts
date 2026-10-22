@@ -89,6 +89,7 @@ async function rasterize(slide: Slide, deck: Deck, index: number): Promise<strin
       accent: deck.accent,
       slideNumber: index + 1,
       totalSlides: deck.slides.length,
+      animateCharts: false,
     }),
   )
   const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }))

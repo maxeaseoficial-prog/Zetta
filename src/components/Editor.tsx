@@ -41,13 +41,14 @@ import {
 } from 'lucide-react'
 import type { BlockType, Deck, IllustrationKind, Layout, Slide, SlideBlock } from '../types'
 import { getTheme } from '../lib/themes'
-import { createBlankSlide, parseChartData } from '../lib/generator'
+import { createBlankSlide } from '../lib/generator'
 import { readImage } from '../lib/files'
 import { validateDeck } from '../lib/validation'
 import { Brand } from './Brand'
 import { ColorPicker, ThemePicker } from './ThemePicker'
 import { SlideCanvas, getSlideWarnings, getTextEditRect } from './SlideCanvas'
 import { Modal } from './Modal'
+import { ChartEditor, type ChartInputDraft } from './ChartEditor'
 
 const LocalAiPanel = lazy(() => import('./LocalAiPanel').then((m) => ({ default: m.LocalAiPanel })))
 export type SaveStatus = 'saving' | 'saved' | 'error'
@@ -117,6 +118,9 @@ export function Editor({
   const [error, setError] = useState('')
   const [rightOpen, setRightOpen] = useState(() => window.innerWidth >= 768)
   const [zoom, setZoom] = useState(100)
+  const chartDrafts = useRef(new Map<string, ChartInputDraft>())
+  const [chartDraftCount, setChartDraftCount] = useState(0)
+  const [confirmLeavingDrafts, setConfirmLeavingDrafts] = useState(false)
   const imageInput = useRef<HTMLInputElement>(null)
   const inlineInput = useRef<HTMLTextAreaElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -127,6 +131,39 @@ export function Editor({
   const slide = deck.slides[activeIndex]
   const block = slide.blocks.find((b) => b.id === selected)
   const theme = getTheme(deck.themeId)
+  useEffect(() => {
+    const validIds = new Set(
+      deck.slides.flatMap((item) => item.blocks.map((element) => element.id)),
+    )
+    for (const id of chartDrafts.current.keys())
+      if (!validIds.has(id)) chartDrafts.current.delete(id)
+    setChartDraftCount(chartDrafts.current.size)
+  }, [deck.slides])
+  useEffect(() => {
+    if (!chartDraftCount) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [chartDraftCount])
+  function requestBack() {
+    if (chartDrafts.current.size) setConfirmLeavingDrafts(true)
+    else onBack()
+  }
+  function reviewDraft() {
+    const target = deck.slides.find((item) =>
+      item.blocks.some((element) => chartDrafts.current.has(element.id)),
+    )
+    if (target) {
+      selectSlide(target.id)
+      setSelected(target.blocks.find((element) => chartDrafts.current.has(element.id))!.id)
+      setTab('properties')
+      setRightOpen(true)
+    }
+    setConfirmLeavingDrafts(false)
+  }
   useEffect(() => setTitleDraft(deck.title), [deck.title])
   const warnings = getSlideWarnings(slide, theme)
   const activeText = selected === 'title' ? slide.title : (block?.content ?? '')
@@ -263,7 +300,8 @@ export function Editor({
         position: 50,
         seed: Date.now() % 10000,
       }
-    if (type === 'chart') next.chart = { type: 'bar', data: [], unit: '', source: '' }
+    if (type === 'chart')
+      next.chart = { type: 'bar', data: [], unit: '', source: '', animate: true, showValues: true }
     updateSlide((s) => {
       s.blocks.push(next)
     })
@@ -365,10 +403,14 @@ export function Editor({
     <div className="editor">
       <header className="editor-header">
         <div className="editor-heading-left">
-          <button className="icon-button" aria-label="Voltar às apresentações" onClick={onBack}>
+          <button
+            className="icon-button"
+            aria-label="Voltar às apresentações"
+            onClick={requestBack}
+          >
             <ArrowLeft size={18} />
           </button>
-          <button className="brand-button" onClick={onBack}>
+          <button className="brand-button" onClick={requestBack}>
             <Brand small />
           </button>
           <span className="header-divider" />
@@ -1113,6 +1155,9 @@ export function Editor({
                   {block?.type === 'chart' && (
                     <ChartEditor
                       key={block.id}
+                      onPreview={() => onPresent(activeIndex)}
+                      drafts={chartDrafts.current}
+                      onDraftChange={() => setChartDraftCount(chartDrafts.current.size)}
                       block={block}
                       onChange={(value) =>
                         updateBlock((b) => {
@@ -1181,6 +1226,33 @@ export function Editor({
           e.target.value = ''
         }}
       />
+      {confirmLeavingDrafts && (
+        <Modal
+          title="Há dados de gráfico ainda não aplicados"
+          onClose={() => setConfirmLeavingDrafts(false)}
+        >
+          <p className="muted">
+            Seu rascunho está mantido no editor. A apresentação e o backup usam os últimos dados
+            aplicados. Revise o rascunho para incluir as alterações antes de sair.
+          </p>
+          <div className="chart-draft-exit-actions">
+            <button className="button primary" onClick={reviewDraft}>
+              Revisar dados
+            </button>
+            <button
+              className="button secondary"
+              onClick={() => {
+                chartDrafts.current.clear()
+                setChartDraftCount(0)
+                setConfirmLeavingDrafts(false)
+                onBack()
+              }}
+            >
+              Sair sem aplicar
+            </button>
+          </div>
+        </Modal>
+      )}
       {showSource && (
         <Modal title="Seu conteúdo original" onClose={() => setShowSource(false)} wide>
           <div className="source-modal">
@@ -1230,83 +1302,4 @@ export function Editor({
 }
 function InfoIcon() {
   return <span className="warning-symbol">!</span>
-}
-function ChartEditor({
-  block,
-  onChange,
-}: {
-  block: SlideBlock
-  onChange: (value: NonNullable<SlideBlock['chart']>) => void
-}) {
-  const chart = block.chart ?? { type: 'bar' as const, data: [], unit: '', source: '' }
-  const serialize = () =>
-    chart.data.map((d) => d.label + '; ' + String(d.value).replace('.', ',')).join('\n')
-  const [raw, setRaw] = useState(serialize)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    setRaw(serialize())
-  }, [JSON.stringify(chart.data)])
-  function apply() {
-    try {
-      const data = parseChartData(raw)
-      if (!data.length) throw new Error('Adicione pelo menos um rótulo e valor.')
-      onChange({ ...chart, data })
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Confira os valores informados.')
-    }
-  }
-  return (
-    <>
-      <label className="field-label">
-        TIPO DE GRÁFICO
-        <select
-          value={chart.type}
-          onChange={(e) => onChange({ ...chart, type: e.target.value as 'bar' | 'line' })}
-        >
-          <option value="bar">Barras</option>
-          <option value="line">Linhas</option>
-        </select>
-      </label>
-      <label className="field-label">
-        DADOS
-        <textarea
-          aria-label="Dados do gráfico"
-          rows={7}
-          value={raw}
-          onChange={(e) => setRaw(e.target.value)}
-          placeholder={'Janeiro; 120\nFevereiro; 95,5\nMarço; 140'}
-        />
-      </label>
-      <p className="property-tip">
-        Uma linha por valor: rótulo; número. Use vírgula para decimais. Até 12 categorias.
-      </p>
-      <button className="button secondary full-width" onClick={apply}>
-        <Check size={15} /> Aplicar dados
-      </button>
-      {error && (
-        <p role="alert" className="inline-error">
-          {error}
-        </p>
-      )}
-      <label className="field-label">
-        UNIDADE
-        <input
-          value={chart.unit}
-          maxLength={30}
-          placeholder="Ex.: R$, %, unidades"
-          onChange={(e) => onChange({ ...chart, unit: e.target.value })}
-        />
-      </label>
-      <label className="field-label">
-        FONTE DOS DADOS
-        <input
-          value={chart.source}
-          maxLength={160}
-          placeholder="Ex.: relatório de vendas"
-          onChange={(e) => onChange({ ...chart, source: e.target.value })}
-        />
-      </label>
-    </>
-  )
 }

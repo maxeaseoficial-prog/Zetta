@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { Slide, SlideBlock, Theme, IllustrationKind } from '../types'
+import { getChartWarnings, renderChartSvg } from '../lib/chartRenderer'
 
 export const SLIDE_WIDTH = 1280
 export const SLIDE_HEIGHT = 720
@@ -14,6 +15,8 @@ export interface SlideCanvasProps {
   className?: string
   slideNumber?: number
   totalSlides?: number
+  animateCharts?: boolean
+  animationKey?: number
 }
 
 type Rect = { x: number; y: number; w: number; h: number }
@@ -321,99 +324,35 @@ function textForBlock(
   }
 }
 
-const chartNumber = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 20 }).format(value)
-const axisNumber = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { maximumSignificantDigits: 3 }).format(value)
-function chartValue(value: number, unit: string): string {
-  return unit === '%'
-    ? `${chartNumber(value)}%`
-    : unit === 'R$'
-      ? `R$ ${chartNumber(value)}`
-      : `${chartNumber(value)}${unit ? ` ${unit}` : ''}`
-}
-
-function chartGeometry(block: SlideBlock, rect: Rect) {
-  const data = block.chart?.data.filter((item) => Number.isFinite(item.value)) ?? []
-  const values = data.map((item) => item.value)
-  const lo = Math.min(0, ...values),
-    rawHi = Math.max(0, ...values)
-  const hi = rawHi === lo ? lo + 1 : rawHi
-  const range = hi - lo
-  const ticks = [lo, lo + range / 3, lo + (range * 2) / 3, hi]
-  const axisWidth =
-    Math.max(27, ...ticks.map((tick) => widthOf(axisNumber(tick), 12, 'Arial, sans-serif'))) + 14
-  const graphWidth = Math.max(20, rect.w - 48 - axisWidth)
-  const categoryWidth = graphWidth / Math.max(1, data.length)
-  const labels = data.map((item) => wrap(item.label, Math.max(12, categoryWidth - 8), 12))
-  const labelLines = Math.max(1, ...labels.map((lines) => lines.length))
+function chartFrame(block: SlideBlock, rect: Rect) {
   const title = fit(block.content, rect.w - 48, 52, 18, 16, 'Arial, sans-serif', 700)
   const source = block.chart?.source ? wrap(`Fonte: ${block.chart.source}`, rect.w - 48, 12) : []
-  const top = rect.y + 22 + (block.content ? title.height + 10 : 0)
-  const bottom = rect.y + rect.h - (labelLines * 14 + source.length * 15 + 34)
-  const graph = {
-    x: rect.x + 24 + axisWidth,
-    y: top + 13,
-    w: graphWidth,
-    h: Math.max(20, bottom - top - 13),
-  }
+  const headingHeight = block.content ? title.height + 14 : 0
+  const sourceHeight = source.length ? source.length * 15 + 10 : 0
   return {
-    data,
-    lo,
-    hi,
-    range,
-    ticks,
     title,
     source,
-    graph,
-    categoryWidth,
-    labels,
-    labelLines,
-    actualHeight: bottom - top - 13,
+    graph: {
+      x: rect.x + 18,
+      y: rect.y + 18 + headingHeight,
+      w: rect.w - 36,
+      h: rect.h - 36 - headingHeight - sourceHeight,
+    },
   }
 }
 
 function chartWarnings(block: SlideBlock, rect: Rect): string[] {
-  const warnings: string[] = []
-  if (!block.chart?.data.length) return ['O gráfico precisa de dados antes de exportar.']
-  if (block.chart.data.some((item) => !Number.isFinite(item.value)))
-    warnings.push('O gráfico contém um valor numérico inválido.')
-  if (block.chart.data.length > 16)
-    warnings.push(
-      'O gráfico tem mais de 16 categorias. Divida os dados em mais slides para manter a leitura.',
-    )
-  if (rect.w < 250 || rect.h < 190)
-    warnings.push(
-      'O gráfico está pequeno demais para exibir os dados. Escolha um layout com mais espaço.',
-    )
-  const geometry = chartGeometry(block, rect)
-  if (!Number.isFinite(geometry.range))
-    warnings.push(
-      'A amplitude dos valores do gráfico excede o limite numérico. Revise a unidade dos dados.',
-    )
-  if (geometry.title.lines.length > 2)
+  const { title, source, graph } = chartFrame(block, rect)
+  const warnings = getChartWarnings(
+    block.chart ?? { type: 'bar', data: [], unit: '', source: '' },
+    graph.w,
+    graph.h,
+  )
+  if (title.lines.length > 2)
     warnings.push('O título do gráfico precisa ser mais curto ou ter um layout maior.')
-  if (geometry.source.length > 2)
+  if (source.length > 2)
     warnings.push(
       'A fonte do gráfico ocupa mais de duas linhas. Encurte a referência ou amplie o bloco.',
-    )
-  if (geometry.labelLines > 3)
-    warnings.push(
-      'Há rótulos longos no gráfico. Encurte os nomes ou divida as categorias em mais slides.',
-    )
-  if (geometry.actualHeight < 55 || geometry.graph.w < 120)
-    warnings.push(
-      'O gráfico precisa de mais espaço para exibir os dados e rótulos sem sobreposição.',
-    )
-  if (
-    block.chart.data.some(
-      (item) =>
-        widthOf(chartValue(item.value, block.chart!.unit), 12, 'Arial, sans-serif', 700) >
-        geometry.categoryWidth - 3,
-    )
-  )
-    warnings.push(
-      'Os valores do gráfico precisam de mais espaço. Amplie o bloco ou reduza a quantidade de categorias por slide.',
     )
   return warnings
 }
@@ -857,173 +796,63 @@ function Artwork({
   )
 }
 
-function Chart({ placement, colors, id }: { placement: Placement; colors: Colors; id: string }) {
+function Chart({
+  placement,
+  colors,
+  id,
+  animate = false,
+  animationKey = 0,
+}: {
+  placement: Placement
+  colors: Colors
+  id: string
+  animate?: boolean
+  animationKey?: number
+}) {
   const { block, x, y, w, h } = placement
-  const chart = block.chart
+  const chart = block.chart ?? { type: 'bar' as const, data: [], unit: '', source: '' }
   const bg = validColor(block.style?.background, colors.surface)
   const ink = readable(validColor(block.style?.color, colors.fg), bg)
   const muted = readable(colors.muted, bg)
-  const geometry = chartGeometry(block, placement)
-  const { data: safeData, title, source, graph, lo, range, categoryWidth, ticks, labels } = geometry
-  const pointY = (value: number) =>
-    graph.y + graph.h - ((value - lo) / (Number.isFinite(range) ? range : 1)) * graph.h
-  const zero = pointY(0)
-  const unit = chart?.unit || ''
+  const { title, source, graph } = chartFrame(block, placement)
+  const snapshot = renderChartSvg(chart, {
+    width: Math.max(1, graph.w),
+    height: Math.max(1, graph.h),
+    foreground: ink,
+    muted,
+    accent: colors.accent,
+    background: bg,
+    animate,
+  })
+  const animated = animate && chart.animate !== false && snapshot.svg.includes('@keyframes')
+  // A distinct document per playback avoids sharing an SVG image's animation
+  // timeline with another chart or a previous visit to the same slide.
+  const href = animated
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(snapshot.svg.replace('<svg ', `<svg data-zetta-entry="${id}-${animationKey}" `))}`
+    : snapshot.dataUrl
   return (
-    <g>
+    <g data-chart-type={chart.type} data-chart-animated={String(animated)}>
       <rect x={x} y={y} width={w} height={h} rx="20" fill={bg} />
       {block.content && (
         <TextLines layout={title} x={x + 24} y={y + 18} width={w - 48} color={ink} weight={700} />
       )}
-      {safeData.length === 0 ? (
+      <image
+        key={`${id}-${animationKey}-${animated ? 'animated' : 'static'}`}
+        x={graph.x}
+        y={graph.y}
+        width={Math.max(1, graph.w)}
+        height={Math.max(1, graph.h)}
+        href={href}
+        preserveAspectRatio="xMidYMid meet"
+        data-chart-type={chart.type}
+        data-chart-animated={String(animated)}
+        aria-label={`${block.content || 'Gráfico'} · ${chart.data.length} categorias${chart.unit ? ` · ${chart.unit}` : ''}`}
+      />
+      {source.map((line, index) => (
         <text
-          x={x + w / 2}
-          y={y + h / 2}
-          textAnchor="middle"
-          fill={muted}
-          fontFamily="Arial, sans-serif"
-          fontSize="18"
-        >
-          Adicione dados ao gráfico
-        </text>
-      ) : (
-        <>
-          {ticks.map((tick, i) => (
-            <g key={i}>
-              <line
-                x1={graph.x}
-                x2={graph.x + graph.w}
-                y1={pointY(tick)}
-                y2={pointY(tick)}
-                stroke={ink}
-                strokeOpacity="0.1"
-              />
-              <text
-                x={graph.x - 12}
-                y={pointY(tick) + 4}
-                textAnchor="end"
-                fill={muted}
-                fontFamily="Arial, sans-serif"
-                fontSize="12"
-              >
-                {axisNumber(tick)}
-              </text>
-            </g>
-          ))}
-          <line
-            x1={graph.x}
-            x2={graph.x + graph.w}
-            y1={zero}
-            y2={zero}
-            stroke={ink}
-            strokeOpacity="0.35"
-          />
-          {chart?.type === 'line' && (
-            <>
-              <defs>
-                <linearGradient id={`${id}-area`} x1="0" y1="0" x2="0" y2="1">
-                  <stop stopColor={colors.accent} stopOpacity="0.25" />
-                  <stop offset="1" stopColor={colors.accent} stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              <path
-                d={`M${graph.x + categoryWidth / 2} ${zero} ${safeData.map((item, i) => `L${graph.x + categoryWidth * (i + 0.5)} ${pointY(item.value)}`).join(' ')} L${graph.x + categoryWidth * (safeData.length - 0.5)} ${zero} Z`}
-                fill={`url(#${id}-area)`}
-              />
-              <polyline
-                points={safeData
-                  .map((item, i) => `${graph.x + categoryWidth * (i + 0.5)},${pointY(item.value)}`)
-                  .join(' ')}
-                fill="none"
-                stroke={colors.accent}
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </>
-          )}
-          {safeData.map((item, i) => {
-            const cx = graph.x + categoryWidth * (i + 0.5)
-            const py = pointY(item.value)
-            const barWidth = Math.min(68, categoryWidth * 0.55)
-            const labelValue = chartValue(item.value, unit)
-            const valueWidth = widthOf(labelValue, 12, 'Arial, sans-serif', 700)
-            return (
-              <g key={i}>
-                {chart?.type === 'line' ? (
-                  <circle
-                    cx={cx}
-                    cy={py}
-                    r="4.5"
-                    fill={bg}
-                    stroke={colors.accent}
-                    strokeWidth="3"
-                  />
-                ) : item.value === 0 ? (
-                  <line
-                    x1={cx - barWidth / 2}
-                    x2={cx + barWidth / 2}
-                    y1={zero}
-                    y2={zero}
-                    stroke={colors.accent}
-                    strokeWidth="3"
-                  />
-                ) : (
-                  <rect
-                    x={cx - barWidth / 2}
-                    y={Math.min(py, zero)}
-                    width={barWidth}
-                    height={Math.abs(zero - py)}
-                    rx={Math.min(6, Math.abs(zero - py) / 2)}
-                    fill={colors.accent}
-                    opacity={0.66 + (i / Math.max(1, safeData.length)) * 0.34}
-                  />
-                )}
-                {item.value < 0 && (
-                  <rect
-                    x={cx - valueWidth / 2 - 4}
-                    y={py - 24}
-                    width={valueWidth + 8}
-                    height="19"
-                    rx="4"
-                    fill={bg}
-                    opacity="0.92"
-                  />
-                )}
-                <text
-                  x={cx}
-                  y={py - 9}
-                  fill={ink}
-                  fontFamily="Arial, sans-serif"
-                  fontWeight="700"
-                  fontSize="12"
-                  textAnchor="middle"
-                >
-                  {labelValue}
-                </text>
-                <text
-                  x={cx}
-                  fill={muted}
-                  fontFamily="Arial, sans-serif"
-                  fontSize="12"
-                  textAnchor="middle"
-                >
-                  {labels[i].map((label, index) => (
-                    <tspan key={index} x={cx} y={graph.y + graph.h + 23 + index * 14}>
-                      {label}
-                    </tspan>
-                  ))}
-                </text>
-              </g>
-            )
-          })}
-        </>
-      )}
-      {source.map((line, i) => (
-        <text
-          key={i}
+          key={index}
           x={x + 24}
-          y={y + h - 14 - (source.length - i - 1) * 15}
+          y={y + h - 14 - (source.length - index - 1) * 15}
           fill={muted}
           fontFamily="Arial, sans-serif"
           fontSize="12"
@@ -1101,6 +930,8 @@ export function SlideCanvas({
   className,
   slideNumber,
   totalSlides,
+  animateCharts = false,
+  animationKey = 0,
 }: SlideCanvasProps) {
   const reactId = useId()
   const [, updateImages] = useState(0)
@@ -1330,7 +1161,13 @@ export function SlideCanvas({
                 </g>
               </>
             ) : block.type === 'chart' ? (
-              <Chart placement={placement} colors={colors} id={id} />
+              <Chart
+                placement={placement}
+                colors={colors}
+                id={id}
+                animate={animateCharts}
+                animationKey={animationKey}
+              />
             ) : (
               <TextBlock placement={placement} colors={colors} />
             )}

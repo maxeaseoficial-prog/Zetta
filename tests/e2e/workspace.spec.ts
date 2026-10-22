@@ -123,9 +123,11 @@ test('empty chart saves as draft, numeric edits persist and backups reopen', asy
   await page.getByRole('button', { name: 'Adicionar', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Gráfico' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Salvo neste navegador' })).toBeVisible()
-  await page.getByLabel('Dados do gráfico').fill('Janeiro; 0\nFevereiro; -12,5\nMarço; 22,5')
+  await page
+    .getByLabel('Dados do gráfico', { exact: true })
+    .fill('Janeiro; 0\nFevereiro; -12,5\nMarço; 22,5')
   await page.getByRole('button', { name: 'Aplicar dados' }).click()
-  await page.getByLabel('Dados do gráfico').blur()
+  await page.getByLabel('Dados do gráfico', { exact: true }).blur()
   await expect(page.getByRole('status').filter({ hasText: 'Salvo neste navegador' })).toBeVisible()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Baixar backup editável' }).click()

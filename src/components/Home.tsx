@@ -35,6 +35,7 @@ interface Props {
   onDelete: (deck: Deck) => void
   onImport: (file: File) => void
   onExample: () => void
+  onChartsExample: () => void
   onHelp: () => void
 }
 export function Home({
@@ -45,6 +46,7 @@ export function Home({
   onDelete,
   onImport,
   onExample,
+  onChartsExample,
   onHelp,
 }: Props) {
   const [section, setSection] = useState<'home' | 'library' | 'templates'>('home')
@@ -346,6 +348,34 @@ export function Home({
                   >
                     Experimentar com um texto <ArrowUpRight size={13} />
                   </button>
+                </div>
+              </section>
+              <section className="chart-demo-banner" aria-label="Experimente os gráficos do Zetta">
+                <div className="chart-demo-copy">
+                  <span className="eyebrow-label">DÊ VIDA AOS DADOS</span>
+                  <h2>Números que contam uma história.</h2>
+                  <p>Compare resultados, mostre tendências e apresente com movimento.</p>
+                  <button className="button primary" onClick={onChartsExample}>
+                    Experimentar gráficos <ArrowRight size={16} />
+                  </button>
+                  <small>6 tipos · dados editáveis · exemplos fictícios</small>
+                </div>
+                <div className="chart-demo-art" aria-hidden="true">
+                  <div className="chart-demo-art-top">
+                    <span>Evolução</span>
+                    <span>01 — 06</span>
+                  </div>
+                  <div className="chart-demo-bars">
+                    {[31, 48, 40, 65, 78, 96].map((height, index) => (
+                      <i key={index} style={{ height: height + '%' }}>
+                        <b />
+                      </i>
+                    ))}
+                  </div>
+                  <div className="chart-demo-art-axis">
+                    <span>JAN</span>
+                    <span>JUN</span>
+                  </div>
                 </div>
               </section>
               <section className="home-section templates-section">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Maximize, Minimize, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize, Minimize, RotateCcw, Sparkles, X } from 'lucide-react'
 import type { Deck } from '../types'
 import { getTheme } from '../lib/themes'
 import { SlideCanvas } from './SlideCanvas'
@@ -17,9 +17,22 @@ export function Presenter({
   const [index, setIndex] = useState(Math.min(startIndex, deck.slides.length - 1))
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement)
   const [touchStart, setTouchStart] = useState<number | null>(null)
+  const [motionEnabled, setMotionEnabled] = useState(true)
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
+  const [animationKey, setAnimationKey] = useState(0)
+  const hasChart = deck.slides[index].blocks.some((block) => block.type === 'chart')
+  const animatedCharts = motionEnabled && !reducedMotion
   const container = useRef<HTMLDivElement>(null)
   const next = () => setIndex((i) => Math.min(deck.slides.length - 1, i + 1))
   const previous = () => setIndex((i) => Math.max(0, i - 1))
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => setReducedMotion(preference.matches)
+    preference.addEventListener('change', update)
+    return () => preference.removeEventListener('change', update)
+  }, [])
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
     container.current?.focus()
@@ -43,6 +56,7 @@ export function Presenter({
         return
       }
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) {
+        if (e.key === ' ' && (e.target as HTMLElement).closest('button')) return
         e.preventDefault()
         next()
       }
@@ -115,11 +129,14 @@ export function Presenter({
         </button>
         <div className="presenter-slide" aria-live="polite">
           <SlideCanvas
+            key={deck.slides[index].id + '-' + animationKey}
             slide={deck.slides[index]}
             theme={getTheme(deck.themeId)}
             accent={deck.accent}
             slideNumber={index + 1}
             totalSlides={deck.slides.length}
+            animateCharts={animatedCharts}
+            animationKey={animationKey}
           />
         </div>
         <button
@@ -132,7 +149,44 @@ export function Presenter({
         </button>
       </main>
       <footer>
-        <span>Use as setas do teclado para navegar.</span>
+        <div className="presenter-motion-controls">
+          {hasChart ? (
+            <>
+              <button
+                className="presenter-motion-button"
+                aria-label="Animar gráficos"
+                aria-pressed={animatedCharts}
+                disabled={reducedMotion}
+                title={
+                  reducedMotion
+                    ? 'Movimento reduzido ativado no dispositivo'
+                    : 'Ativar ou desativar as animações dos gráficos'
+                }
+                onClick={() => setMotionEnabled((value) => !value)}
+              >
+                <Sparkles size={16} />
+                <span>
+                  {reducedMotion
+                    ? 'Movimento reduzido'
+                    : animatedCharts
+                      ? 'Animação ligada'
+                      : 'Animação desligada'}
+                </span>
+              </button>
+              <button
+                className="presenter-icon"
+                aria-label="Repetir animação"
+                title="Repetir animação"
+                disabled={!animatedCharts}
+                onClick={() => setAnimationKey((value) => value + 1)}
+              >
+                <RotateCcw size={18} />
+              </button>
+            </>
+          ) : (
+            <span>Use as setas do teclado para navegar.</span>
+          )}
+        </div>
         <div>
           <button
             className="presenter-icon"

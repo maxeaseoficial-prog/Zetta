@@ -14,6 +14,7 @@ import type { Deck } from './types'
 import type { CreationInput } from './lib/creation'
 import { listDecks, saveDeck, deleteDeck } from './lib/storage'
 import { createExampleDeck } from './lib/generator'
+import { createChartsDemoDeck } from './lib/chartDemo'
 import { parseDeckImport } from './lib/validation'
 import { downloadBackup } from './lib/files'
 import { useDeckHistory } from './hooks/useDeckHistory'
@@ -194,6 +195,7 @@ export default function App() {
           onDelete={setDeletion}
           onImport={(file) => void importFile(file)}
           onExample={() => open(createExampleDeck())}
+          onChartsExample={() => open(createChartsDemoDeck())}
           onHelp={() => setHelp(true)}
         />
       </div>

@@ -1,7 +1,7 @@
 {
   "name": "zetta",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -17,6 +17,7 @@
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/manrope": "^5.2.8",
     "@mlc-ai/web-llm": "^0.2.79",
+    "echarts": "6.1.0",
     "idb": "^8.0.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",

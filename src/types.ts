@@ -24,6 +24,21 @@ export interface ChartDatum {
   label: string
   value: number
 }
+export type ChartType = 'bar' | 'horizontalBar' | 'line' | 'area' | 'pie' | 'donut'
+export interface ChartSeries {
+  name: string
+  values: number[]
+}
+export interface ChartConfig {
+  type: ChartType
+  data: ChartDatum[]
+  unit: string
+  source: string
+  seriesName?: string
+  additionalSeries?: ChartSeries[]
+  animate?: boolean
+  showValues?: boolean
+}
 export interface SlideBlock {
   id: string
   type: BlockType
@@ -37,7 +52,7 @@ export interface SlideBlock {
     position: number
     seed: number
   }
-  chart?: { type: 'bar' | 'line'; data: ChartDatum[]; unit: string; source: string }
+  chart?: ChartConfig
 }
 export interface Slide {
   id: string

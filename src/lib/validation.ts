@@ -54,20 +54,52 @@ const imageSchema = z.strictObject({
   position: z.number().finite().min(0).max(100),
   seed: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER),
 })
-const chartSchema = z.strictObject({
-  type: z.enum(['bar', 'line']),
-  // An empty chart is a valid saved draft. The renderer requires data before export.
-  data: z
-    .array(
-      z.strictObject({
-        label: z.string().min(1).max(120),
-        value: z.number().finite().min(-1e12).max(1e12),
-      }),
-    )
-    .max(50),
-  unit: z.string().max(32),
-  source: z.string().max(5_000),
-})
+const chartSchema = z
+  .strictObject({
+    type: z.enum(['bar', 'horizontalBar', 'line', 'area', 'pie', 'donut']),
+    // An empty chart is a valid saved draft. The renderer requires data before export.
+    data: z
+      .array(
+        z.strictObject({
+          label: z.string().min(1).max(120),
+          value: z.number().finite().min(-1e12).max(1e12),
+        }),
+      )
+      .max(50),
+    unit: z.string().max(32),
+    source: z.string().max(5_000),
+    seriesName: z.string().max(60).optional(),
+    additionalSeries: z
+      .array(
+        z.strictObject({
+          name: z.string().trim().min(1).max(60),
+          values: z.array(z.number().finite().min(-1e12).max(1e12)).max(50),
+        }),
+      )
+      .max(2)
+      .optional(),
+    animate: z.boolean().optional(),
+    showValues: z.boolean().optional(),
+  })
+  .superRefine((chart, context) => {
+    const names = new Set([(chart.seriesName?.trim() || 'Valores').toLocaleLowerCase('pt-BR')])
+    for (const [index, series] of (chart.additionalSeries ?? []).entries()) {
+      if (series.values.length !== chart.data.length)
+        context.addIssue({
+          code: 'custom',
+          path: ['additionalSeries', index, 'values'],
+          message: 'Cada série precisa de um valor para cada categoria do gráfico.',
+        })
+      const key = series.name.trim().toLocaleLowerCase('pt-BR')
+      if (names.has(key))
+        context.addIssue({
+          code: 'custom',
+          path: ['additionalSeries', index, 'name'],
+          message: 'Use nomes diferentes para as séries do gráfico.',
+        })
+      names.add(key)
+    }
+  })
 const blockSchema = z
   .strictObject({
     id,

@@ -184,6 +184,65 @@ describe('outline and deterministic generation', () => {
     expect(chart?.data.map((datum) => datum.value)).toEqual([20, 30])
   })
 
+  it('retains named series and table headers while selecting temporal charts conservatively', () => {
+    const text = 'Mês;Receita;Custo\nJaneiro;1.250,50;900\nFevereiro;0;100\nMarço;-350,75;200'
+    const outline = buildOutline(text, options)
+    const deck = generateDeck(text, outline, options)
+    const chart = deck.slides[1].blocks[0].chart
+    expect(chart).toMatchObject({
+      type: 'line',
+      seriesName: 'Receita',
+      showValues: false,
+      data: [
+        { label: 'Janeiro', value: 1250.5 },
+        { label: 'Fevereiro', value: 0 },
+        { label: 'Março', value: -350.75 },
+      ],
+      additionalSeries: [{ name: 'Custo', values: [900, 100, 200] }],
+    })
+    expect(deck.slides[1].notes).toContain(text)
+    expect(deck.source.text).toBe(text)
+    expect(validateDeck(deck)).toEqual(deck)
+    const reversed = text.replace('Janeiro', 'Abril')
+    const reversedDeck = generateDeck(reversed, buildOutline(reversed, options), options)
+    expect(reversedDeck.slides[1].blocks[0].chart?.type).toBe('bar')
+    const categories =
+      'Categoria;Valor\nRegião metropolitana de São Paulo;100\nRegião metropolitana de Campinas;150'
+    expect(
+      generateDeck(categories, buildOutline(categories, options), options).slides[1].blocks[0].chart
+        ?.type,
+    ).toBe('horizontalBar')
+  })
+
+  it('never generates a partial multi-series chart from an oversized table', () => {
+    const text =
+      'Categoria;Receita;Custo\n' +
+      Array.from(
+        { length: 15 },
+        (_, index) =>
+          `${'Categoria de identificação extensa '.repeat(3)}${index};${index};${index * -2}`,
+      ).join('\n')
+    expect(text.length).toBeGreaterThan(1200)
+    const outline = buildOutline(text, options)
+    expect(outline).toHaveLength(1)
+    const deck = generateDeck(text, outline, options)
+    expect(deck.slides.some((slide) => slide.blocks.some((block) => block.type === 'chart'))).toBe(
+      false,
+    )
+    expect(deck.slides[1].notes).toContain(text)
+    expect(deck.source.text).toBe(text)
+    expect(getGenerationWarnings(text, outline, options).join(' ')).toContain('muitas categorias')
+  })
+
+  it('does not invent replacement zeroes or silently remove an invalid series', () => {
+    const text = 'Categoria;Receita;Custo\nJaneiro;100;\nFevereiro;200;50'
+    const outline = buildOutline(text, options)
+    const deck = generateDeck(text, outline, options)
+    expect(deck.slides[1].blocks[0].chart).toBeUndefined()
+    expect(deck.slides[1].notes).toContain(text)
+    expect(deck.source.text).toBe(text)
+  })
+
   it('keeps dense chart data intact in notes and explains the text fallback', () => {
     const text = Array.from({ length: 30 }, (_, index) => `Categoria ${index};${index}`).join('\n')
     const outline = buildOutline(text, options)
@@ -212,6 +271,8 @@ describe('outline and deterministic generation', () => {
           (_, index) => `- ${index}: ${'Um conteúdo informado na fonte. '.repeat(4)}`,
         ).join('\n'),
       'Descrição\n' + 'Um conteúdo extenso que será selecionado com clareza. '.repeat(70),
+      'Mês;Receita;Custo\nJaneiro;12000;8500\nFevereiro;14500;9200\nMarço;13000;8800',
+      Array.from({ length: 12 }, (_, index) => `Região ${index};${index}`).join('\n'),
       Array.from({ length: 16 }, (_, index) => `Região ${index};${index}`).join('\n'),
       Array.from({ length: 30 }, (_, index) => `Região ${index};${index}`).join('\n'),
     ]

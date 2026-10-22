@@ -1,0 +1,101 @@
+{
+  "errors": [],
+  "requests": [
+    "http://127.0.0.1:5182/fonts/LiberationSans-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Bold.ttf",
+    "http://127.0.0.1:5182/src/lib/chartRenderer.ts?t=1792643261543",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_core.js?v=f73bde56",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_charts.js?v=946a0c64",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_components.js?v=af6a26ba",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_features.js?v=882f4a41",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_renderers.js?v=7538953e",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/svg2pdf__js.js?v=f969ac2e"
+  ],
+  "initialHeavyRequests": [],
+  "preChartHeavyRequests": [
+    "http://127.0.0.1:5182/fonts/LiberationSans-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Bold.ttf"
+  ],
+  "layoutWarnings": [],
+  "searchable": {
+    "mode": "searchable",
+    "pageCount": 12,
+    "rasterizedElements": [
+      {
+        "slide": 1,
+        "reason": "1 imagem(ns) enviada(s) mantida(s) como bitmap; texto e gráficos permanecem vetoriais."
+      },
+      {
+        "slide": 12,
+        "reason": "1 ilustração(ões) decorativa(s) preservada(s) como imagem para manter gradientes e traços."
+      }
+    ],
+    "warnings": [
+      "Slide 12: a ilustração decorativa foi preservada como imagem; textos, gráficos e diagramas continuam vetoriais."
+    ]
+  },
+  "image": {
+    "mode": "image",
+    "pageCount": 3,
+    "rasterizedElements": [
+      {
+        "slide": 1,
+        "reason": "Página convertida em imagem por escolha explícita."
+      },
+      {
+        "slide": 2,
+        "reason": "Página convertida em imagem por escolha explícita."
+      },
+      {
+        "slide": 3,
+        "reason": "Página convertida em imagem por escolha explícita."
+      }
+    ],
+    "warnings": []
+  },
+  "unsupportedGlyph": "A fonte incorporada não contém o caractere “🦋” do slide 1. Escolha PDF como imagem para preservá-lo.\nO PDF não foi criado. Você pode escolher PDF como imagem para preservar a aparência.",
+  "legacy": {
+    "mode": "searchable",
+    "pageCount": 2,
+    "rasterizedElements": [
+      {
+        "slide": 1,
+        "reason": "1 imagem(ns) enviada(s) mantida(s) como bitmap; texto e gráficos permanecem vetoriais."
+      },
+      {
+        "slide": 2,
+        "reason": "1 ilustração(ões) decorativa(s) preservada(s) como imagem para manter gradientes e traços."
+      }
+    ],
+    "warnings": [
+      "Neste PDF, Arial usa Liberation Sans (slides 1, 2).",
+      "Georgia usa Liberation Serif (slides 2).",
+      "Slide 2: a ilustração decorativa foi preservada como imagem; textos, gráficos e diagramas continuam vetoriais."
+    ]
+  },
+  "finalRequests": [
+    "http://127.0.0.1:5182/fonts/LiberationSans-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSans-Bold.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Regular.ttf",
+    "http://127.0.0.1:5182/fonts/LiberationSerif-Bold.ttf",
+    "http://127.0.0.1:5182/src/lib/chartRenderer.ts?t=1792643261543",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_core.js?v=f73bde56",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_charts.js?v=946a0c64",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_components.js?v=af6a26ba",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_features.js?v=882f4a41",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/echarts_renderers.js?v=7538953e",
+    "http://127.0.0.1:5182/node_modules/.vite/deps/svg2pdf__js.js?v=f969ac2e"
+  ]
+}

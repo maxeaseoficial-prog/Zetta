@@ -1,0 +1,41 @@
+{
+  "environment": {
+    "browser": "141.0.7390.37",
+    "viewport": "1440x1000",
+    "origin": "loopback HTTP, production build, fresh context per sample",
+    "trials": 3
+  },
+  "main": {
+    "file": "/assets/index-bWCuaPKp.js",
+    "bytes": 502414,
+    "gzip": 157225
+  },
+  "medians": {
+    "homeReady": 171.23566899999992,
+    "labReady": 302.074714,
+    "editReady": 51.60359600000015
+  },
+  "samples": [
+    {
+      "homeReady": 234.13652800000006,
+      "labReady": 302.074714,
+      "editReady": 52.84198399999991,
+      "initialScripts": ["/assets/index-bWCuaPKp.js"],
+      "afterChartScripts": ["/assets/index-bWCuaPKp.js", "/assets/chartRenderer-DTJXgVH9.js"]
+    },
+    {
+      "homeReady": 166.36477400000012,
+      "labReady": 302.2477140000001,
+      "editReady": 51.60359600000015,
+      "initialScripts": ["/assets/index-bWCuaPKp.js"],
+      "afterChartScripts": ["/assets/index-bWCuaPKp.js", "/assets/chartRenderer-DTJXgVH9.js"]
+    },
+    {
+      "homeReady": 171.23566899999992,
+      "labReady": 300.30257299999994,
+      "editReady": 49.08095800000001,
+      "initialScripts": ["/assets/index-bWCuaPKp.js"],
+      "afterChartScripts": ["/assets/index-bWCuaPKp.js", "/assets/chartRenderer-DTJXgVH9.js"]
+    }
+  ]
+}

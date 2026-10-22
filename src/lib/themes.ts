@@ -1,0 +1,81 @@
+import type { Theme, ThemeId } from '../types'
+
+/** Presentation themes. The application's own palette is intentionally separate. */
+export const THEMES: Theme[] = [
+  {
+    id: 'minimal',
+    name: 'Essencial',
+    description: 'Espaço, equilíbrio e uma ideia de cada vez.',
+    background: '#FFFFFF',
+    foreground: '#0F172A',
+    muted: '#64748B',
+    accent: '#2563EB',
+    surface: '#EFF6FF',
+    fontFamily: 'Arial, sans-serif',
+    dark: false,
+  },
+  {
+    id: 'executive',
+    name: 'Executivo',
+    description: 'Clareza e precisão para decisões importantes.',
+    background: '#F4F6FA',
+    foreground: '#152C47',
+    muted: '#62758B',
+    accent: '#3369AD',
+    surface: '#E8EEF5',
+    fontFamily: 'Arial, sans-serif',
+    dark: false,
+  },
+  {
+    id: 'editorial',
+    name: 'Editorial',
+    description: 'Tipografia expressiva e o ritmo de uma boa história.',
+    background: '#F5F0E7',
+    foreground: '#3B312B',
+    muted: '#817165',
+    accent: '#A3543D',
+    surface: '#EAE1D4',
+    fontFamily: 'Georgia, serif',
+    dark: false,
+  },
+  {
+    id: 'bold',
+    name: 'Impacto',
+    description: 'Contraste, personalidade e ideias que ficam.',
+    background: '#2563EB',
+    foreground: '#FFFFFF',
+    muted: '#DBEAFE',
+    accent: '#A5D8FF',
+    surface: '#1D4ED8',
+    fontFamily: 'Arial, sans-serif',
+    dark: true,
+  },
+  {
+    id: 'dark',
+    name: 'Noturno',
+    description: 'Profundidade, luz e uma presença marcante.',
+    background: '#0F172A',
+    foreground: '#F8FAFC',
+    muted: '#A8BAD1',
+    accent: '#7DB4FF',
+    surface: '#1E293B',
+    fontFamily: 'Arial, sans-serif',
+    dark: true,
+  },
+  {
+    id: 'classroom',
+    name: 'Descoberta',
+    description: 'Cor e proximidade para tornar o complexo simples.',
+    background: '#FFF8EB',
+    foreground: '#263D45',
+    muted: '#667C7D',
+    accent: '#BC643D',
+    surface: '#F1E9D9',
+    fontFamily: 'Arial, sans-serif',
+    dark: false,
+  },
+]
+
+export function getTheme(id: ThemeId | string): Theme {
+  return THEMES.find((theme) => theme.id === id) ?? THEMES[0]
+}

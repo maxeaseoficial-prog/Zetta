@@ -17,7 +17,18 @@ import {
   parseLegacyChartInput,
   type ParsedChartInput,
 } from './chartData'
-import { getChartWarnings } from './chartRenderer'
+import { getChartWarnings } from './chartLayout'
+import {
+  AUDIENCE_LABELS,
+  PURPOSE_LABELS,
+  createContentBaseline,
+  createOutlineBaseline,
+  isOutlineEdited,
+  normalizeBrief,
+  originalOutlineTitle,
+  planNarrative,
+  suggestedSlideCount,
+} from './creation'
 
 /** The first engine is deterministic: it selects source excerpts and layouts, not AI-written facts. */
 export const MAX_SOURCE_CHARACTERS = 500_000
@@ -163,8 +174,9 @@ function titleFor(text: string, index: number): string {
 /** Outline items are content slides; generateDeck adds one cover and one closing slide. */
 export function buildOutline(text: string, options: GenerationOptions): OutlineItem[] {
   assertText(text)
-  const units = sourceUnits(text, options.pages)
-  const count = Math.min(requestedCount(options) - 2, units.length)
+  const { units, requirements } = planNarrative(sourceUnits(text, options.pages), options.brief)
+  const pacedCount = suggestedSlideCount(options.brief)
+  const count = Math.min(Math.min(requestedCount(options), pacedCount ?? 20) - 2, units.length)
   const groups: SourceUnit[][] = []
   let cursor = 0
   let remainingWeight = units.reduce((sum, unit) => sum + unit.text.length, 0)
@@ -185,12 +197,23 @@ export function buildOutline(text: string, options: GenerationOptions): OutlineI
   }
   return groups.map((group, index) => {
     const content = group.map((unit) => unit.text).join('\n\n')
-    return {
+    const item: OutlineItem = {
       id: createId('outline'),
       title: titleFor(content, index),
       content,
       sourcePages: [...new Set(group.flatMap((unit) => unit.pages))].sort((a, b) => a - b),
     }
+    item.origin = {
+      kind: 'source',
+      sourceName:
+        options.sourceName ?? (options.sourceKind === 'pdf' ? 'Documento PDF' : 'Texto informado'),
+      sourceKind: options.sourceKind ?? 'text',
+      excerpt: content,
+      pages: [...item.sourcePages],
+      baseline: createOutlineBaseline(item),
+    }
+    if (index === groups.length - 1 && requirements.length) item.requirements = requirements
+    return item
   })
 }
 
@@ -202,8 +225,23 @@ export function getGenerationWarnings(
   const warnings = [
     'O modo por regras seleciona trechos do material; ele não pesquisa nem acrescenta fatos. O texto integral permanece na fonte e nas notas dos tópicos.',
   ]
+  if (options.brief) {
+    const brief = normalizeBrief(options.brief)
+    warnings.push(
+      `Roteiro orientado para ${PURPOSE_LABELS[brief.purpose].toLocaleLowerCase('pt-BR')} e ${AUDIENCE_LABELS[brief.audience].toLocaleLowerCase('pt-BR')}. A ordem usa palavras dos títulos; confira se ela representa sua intenção. Perguntas pendentes são sugestões editoriais, não fatos do material.`,
+    )
+    if (brief.durationMinutes !== undefined)
+      warnings.push(
+        `Duração pretendida: ${brief.durationMinutes} min. A divisão usa até um tópico por minuto, mais capa e encerramento, limitada ao pedido de slides. É uma referência de ritmo; a duração real depende da apresentação e precisa ser ensaiada.`,
+      )
+  }
+  if (outline.some((item) => item.requirements?.length))
+    warnings.push(
+      'Há perguntas a resolver no roteiro. Elas ficam separadas do conteúdo e permanecem disponíveis nas notas e no painel de origem.',
+    )
   const desired = requestedCount(options)
   const actual = outline.length + 2
+  const pacingLimit = suggestedSlideCount(options.brief)
   if (desired !== options.slideCount)
     warnings.push(
       `O pedido foi ajustado para ${desired} slides: o intervalo inicial é de 3 a 20, incluindo capa e encerramento.`,
@@ -211,7 +249,9 @@ export function getGenerationWarnings(
   if (actual !== desired)
     warnings.push(
       actual < desired
-        ? `O material tem ${outline.length} tópicos nesta divisão. Serão ${actual} slides, incluindo capa e encerramento, para evitar repetir conteúdo apenas para preencher o pedido de ${desired}.`
+        ? pacingLimit !== undefined && pacingLimit < desired && actual === pacingLimit
+          ? `Para o ritmo pretendido, o material foi reunido em ${outline.length} tópicos. Serão ${actual} slides, incluindo capa e encerramento, em vez dos ${desired} pedidos. O conteúdo integral continua na fonte e nas notas.`
+          : `O material tem ${outline.length} tópicos nesta divisão. Serão ${actual} slides, incluindo capa e encerramento, para evitar repetir conteúdo apenas para preencher o pedido de ${desired}.`
         : `O roteiro revisado tem ${outline.length} tópicos. Serão ${actual} slides, incluindo capa e encerramento, em vez dos ${desired} pedidos inicialmente.`,
     )
   if (options.pages?.some((page) => !page.text.trim()))
@@ -423,7 +463,10 @@ function sourceNotes(item: OutlineItem): string {
   const pages = item.sourcePages.length
     ? `\nPáginas de origem: ${item.sourcePages.join(', ')}.\n`
     : '\n'
-  return `Título completo do tópico: ${item.title}\n\nTrecho integral deste tópico. O conteúdo visível é uma seleção por regras, não uma verificação dos fatos.${pages}\n${item.content}`
+  const questions = item.requirements?.length
+    ? `\n\nPerguntas editoriais pendentes (não são fatos da fonte):\n${item.requirements.map((question) => `• ${question}`).join('\n')}`
+    : ''
+  return `Título completo do tópico: ${item.title}\n\nTrecho integral deste tópico. O conteúdo visível é uma seleção por regras, não uma verificação dos fatos.${pages}\n${item.content}${questions}`
 }
 
 function verifiedSourcePages(item: OutlineItem, options: GenerationOptions): number[] {
@@ -433,7 +476,60 @@ function verifiedSourcePages(item: OutlineItem, options: GenerationOptions): num
   const original = pages
     .map((page) => options.pages!.find((source) => source.page === page)?.text ?? '')
     .join('\n\n')
-  return normalized(original).includes(normalized(item.content)) ? pages : []
+  if (normalized(original).includes(normalized(item.content))) return pages
+  // A narrative can reorder intact paragraphs from the same pages. Never grant refs to edited text.
+  if (isOutlineEdited(item) === false && item.origin?.excerpt === item.content) {
+    const chunks = item.content.split(/\n\s*\n/).filter((chunk) => chunk.trim())
+    if (chunks.every((chunk) => normalized(original).includes(normalized(chunk)))) return pages
+  }
+  return []
+}
+
+function contentSlide(item: OutlineItem, index: number, options: GenerationOptions): Slide {
+  const limit = { short: 220, balanced: 390, detailed: 480 }[options.density]
+  const rich = options.composition === 'rich'
+  const body = contentWithoutHeading(item)
+  const { table } = chartTableForGeneration(body)
+  const isChart = Boolean(table && chartFitsDefaultLayout(table))
+  const pages = verifiedSourcePages(item, options)
+  const bulletLines = body.split('\n').filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line))
+  const isBullets =
+    bulletLines.length >= 2 &&
+    bulletLines.length === body.split('\n').filter((line) => line.trim()).length
+  const blocks: SlideBlock[] = isChart
+    ? [
+        {
+          id: createId('block'),
+          type: 'chart',
+          content: '',
+          chart: {
+            ...chartConfig(table!),
+            source: pages.length
+              ? `Material informado · p. ${pages.join(', ')}`
+              : 'Dados informados no material de origem',
+          },
+        },
+      ]
+    : [
+        {
+          id: createId('block'),
+          type: isBullets ? 'bullets' : 'text',
+          content: isBullets
+            ? visibleBullets(bulletLines, options)
+            : excerpt(normalized(body), limit),
+        },
+        ...(rich ? [illustration(index + 1)] : []),
+      ]
+  return {
+    id: createId('slide'),
+    title: displayTitle(item.title, 96),
+    eyebrow: isChart ? 'Dados do material de origem' : 'Trecho selecionado · íntegra nas notas',
+    layout: isChart ? 'chart' : rich ? 'split' : isBullets ? 'bullets' : 'section',
+    blocks,
+    notes: sourceNotes({ ...item, sourcePages: pages }),
+    sourcePages: pages,
+    ...(item.requirements?.length ? { requirements: [...item.requirements] } : {}),
+  }
 }
 
 export function generateDeck(
@@ -459,7 +555,6 @@ export function generateDeck(
     )
   const now = new Date().toISOString()
   const title = titleOfDeck(text, options)
-  const limit = { short: 220, balanced: 390, detailed: 480 }[options.density]
   const rich = options.composition === 'rich'
   const warnings = getGenerationWarnings(text, outline, options)
   const slides: Slide[] = [
@@ -484,51 +579,32 @@ export function generateDeck(
     },
   ]
   outline.forEach((item, index) => {
-    const body = contentWithoutHeading(item)
-    const { table } = chartTableForGeneration(body)
-    const isChart = Boolean(table && chartFitsDefaultLayout(table))
-    const pages = verifiedSourcePages(item, options)
-    const bulletLines = body.split('\n').filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line))
-    const isBullets =
-      bulletLines.length >= 2 &&
-      bulletLines.length === body.split('\n').filter((line) => line.trim()).length
-    let blocks: SlideBlock[]
-    if (isChart) {
-      blocks = [
-        {
-          id: createId('block'),
-          type: 'chart',
-          content: '',
-          chart: {
-            ...chartConfig(table!),
-            source: pages.length
-              ? `Material informado · p. ${pages.join(', ')}`
-              : 'Dados informados no material de origem',
-          },
-        },
-      ]
+    const slide = contentSlide(item, index, options)
+    const belongsToSource = normalized(text).includes(normalized(item.content))
+    slide.origin = item.origin
+      ? structuredClone(item.origin)
+      : {
+          kind: belongsToSource ? 'source' : 'manual',
+          sourceName: belongsToSource
+            ? (options.sourceName ?? 'Texto informado')
+            : 'Adicionado ao roteiro',
+          sourceKind: belongsToSource ? (options.sourceKind ?? 'text') : 'manual',
+          excerpt: item.content,
+          pages: [...slide.sourcePages],
+        }
+    const originalTitle = originalOutlineTitle(item)
+    if (originalTitle !== null && isOutlineEdited(item) === true) {
+      const originalItem = {
+        ...item,
+        title: originalTitle,
+        content: item.origin!.excerpt,
+        sourcePages: [...item.origin!.pages],
+      }
+      slide.origin.baseline = createContentBaseline(contentSlide(originalItem, index, options))
     } else {
-      // Soft/PDF line breaks must not turn a short excerpt into dozens of rendered rows.
-      blocks = [
-        {
-          id: createId('block'),
-          type: isBullets ? 'bullets' : 'text',
-          content: isBullets
-            ? visibleBullets(bulletLines, options)
-            : excerpt(normalized(body), limit),
-        },
-      ]
-      if (rich) blocks.push(illustration(index + 1))
+      slide.origin.baseline = createContentBaseline(slide)
     }
-    slides.push({
-      id: createId('slide'),
-      title: displayTitle(item.title, 96),
-      eyebrow: isChart ? 'Dados do material de origem' : 'Trecho selecionado · íntegra nas notas',
-      layout: isChart ? 'chart' : rich ? 'split' : isBullets ? 'bullets' : 'section',
-      blocks,
-      notes: sourceNotes({ ...item, sourcePages: pages }),
-      sourcePages: pages,
-    })
+    slides.push(slide)
   })
   slides.push({
     id: createId('slide'),
@@ -546,6 +622,16 @@ export function generateDeck(
       'Texto editorial de encerramento sugerido pelo Zetta. Personalize a chamada final; ela não foi extraída do material de origem.',
     sourcePages: [],
   })
+  for (const slide of [slides[0], slides.at(-1)!]) {
+    slide.origin = {
+      kind: 'editorial',
+      sourceName: 'Composição editorial do Zetta',
+      sourceKind: 'manual',
+      excerpt: slide.notes,
+      pages: [],
+      baseline: createContentBaseline(slide),
+    }
+  }
   return {
     schemaVersion: 1,
     id: createId('deck'),
@@ -562,12 +648,16 @@ export function generateDeck(
       kind: options.sourceKind ?? 'text',
       ...(options.pages ? { pages: options.pages.map((page) => ({ ...page })) } : {}),
     },
-    settings: { density: options.density, composition: options.composition },
+    settings: {
+      density: options.density,
+      composition: options.composition,
+      ...(options.brief ? { brief: normalizeBrief(options.brief) } : {}),
+    },
   }
 }
 
 export function createBlankSlide(): Slide {
-  return {
+  const slide: Slide = {
     id: createId('slide'),
     title: 'Novo slide',
     eyebrow: '',
@@ -576,6 +666,15 @@ export function createBlankSlide(): Slide {
     notes: '',
     sourcePages: [],
   }
+  slide.origin = {
+    kind: 'manual',
+    sourceName: 'Criado no editor',
+    sourceKind: 'manual',
+    excerpt: '',
+    pages: [],
+    baseline: createContentBaseline(slide),
+  }
+  return slide
 }
 
 export function createExampleDeck(themeId: ThemeId = 'minimal'): Deck {

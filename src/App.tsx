@@ -151,15 +151,20 @@ export default function App() {
       notify(e instanceof Error ? e.message : 'Não foi possível importar esse arquivo.', true)
     }
   }
-  async function exportDeck() {
+  async function exportDeck(mode: 'searchable' | 'image' = 'searchable') {
     if (!deck || exportProgress) return
     setExportProgress('Preparando…')
     try {
       const { exportPdf } = await import('./lib/exportPdf')
-      await exportPdf(deck, (progress: number) =>
-        setExportProgress('Exportando ' + Math.round(progress * 100) + '%'),
+      const report = await exportPdf(
+        deck,
+        (progress: number) => setExportProgress('Exportando ' + Math.round(progress * 100) + '%'),
+        { mode },
       )
-      notify('PDF pronto. O download foi iniciado.')
+      notify(
+        'PDF pronto. O download foi iniciado.' +
+          (report.warnings.length ? ' ' + report.warnings.join(' ') : ''),
+      )
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Não foi possível exportar. Tente novamente.', true)
     } finally {
@@ -214,7 +219,7 @@ export default function App() {
             onRedo={history.redo}
             onBack={() => void back()}
             onPresent={(index) => setPresentation(index)}
-            onExport={() => void exportDeck()}
+            onExport={(mode) => void exportDeck(mode)}
             onBackup={() => backup(deck)}
             saveStatus={saveStatus}
             exportProgress={exportProgress}
@@ -243,7 +248,7 @@ export default function App() {
         </div>
       )}
       {help && (
-        <Modal title="Seu espaço para boas ideias" onClose={() => setHelp(false)}>
+        <Modal title="Seu espaço para boas ideias" onClose={() => setHelp(false)} padded={false}>
           <div className="help-content">
             <Brand />
             <h3>
@@ -302,7 +307,11 @@ export default function App() {
         </Modal>
       )}
       {deletion && (
-        <Modal title="Excluir apresentação?" onClose={() => !deleting && setDeletion(null)}>
+        <Modal
+          title="Excluir apresentação?"
+          onClose={() => !deleting && setDeletion(null)}
+          padded={false}
+        >
           <div className="delete-confirm">
             <span className="delete-icon">
               <Trash2 size={24} />

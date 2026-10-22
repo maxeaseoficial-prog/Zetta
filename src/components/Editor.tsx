@@ -38,19 +38,41 @@ import {
   Upload,
   X,
   ChartNoAxesColumnIncreasing,
+  Workflow,
+  Library,
+  Crop,
 } from 'lucide-react'
-import type { BlockType, Deck, IllustrationKind, Layout, Slide, SlideBlock } from '../types'
+import type {
+  BlockType,
+  Deck,
+  DiagramType,
+  IllustrationKind,
+  Layout,
+  Slide,
+  SlideBlock,
+} from '../types'
 import { getTheme } from '../lib/themes'
 import { createBlankSlide } from '../lib/generator'
 import { readImage } from '../lib/files'
 import { validateDeck } from '../lib/validation'
 import { Brand } from './Brand'
 import { ColorPicker, ThemePicker } from './ThemePicker'
-import { SlideCanvas, getSlideWarnings, getTextEditRect } from './SlideCanvas'
+import { SlideCanvas, getSlideWarnings, getTextEditRect, getBlockFrame } from './SlideCanvas'
 import { Modal } from './Modal'
 import { ChartEditor, type ChartInputDraft } from './ChartEditor'
+import { DiagramEditor, createDiagramBlock, diagramLabels } from './DiagramEditor'
+import { applyBrandToDeck, insertReusableSlide, resolveAppearance } from '../lib/brand'
 
 const LocalAiPanel = lazy(() => import('./LocalAiPanel').then((m) => ({ default: m.LocalAiPanel })))
+const CompositionPanel = lazy(() =>
+  import('./CompositionPanel').then((m) => ({ default: m.CompositionPanel })),
+)
+const SourcePanel = lazy(() => import('./SourcePanel').then((m) => ({ default: m.SourcePanel })))
+const BrandPanel = lazy(() => import('./BrandPanel').then((m) => ({ default: m.BrandPanel })))
+const SlideLibraryPanel = lazy(() =>
+  import('./SlideLibraryPanel').then((m) => ({ default: m.SlideLibraryPanel })),
+)
+const CropPanel = lazy(() => import('./CropPanel').then((m) => ({ default: m.CropPanel })))
 export type SaveStatus = 'saving' | 'saved' | 'error'
 interface Props {
   deck: Deck
@@ -61,7 +83,7 @@ interface Props {
   onRedo: () => void
   onBack: () => void
   onPresent: (index: number) => void
-  onExport: () => void
+  onExport: (mode?: 'searchable' | 'image') => void
   onBackup: () => void
   saveStatus: SaveStatus
   exportProgress: string | null
@@ -83,6 +105,7 @@ const blockLabels: Record<BlockType, string> = {
   image: 'Imagem',
   callout: 'Destaque',
   chart: 'Gráfico',
+  diagram: 'Diagrama',
 }
 export function Editor({
   deck,
@@ -107,6 +130,11 @@ export function Editor({
   const [showSource, setShowSource] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
   const [showAi, setShowAi] = useState(false)
+  const [showComposition, setShowComposition] = useState(false)
+  const [showBrand, setShowBrand] = useState(false)
+  const [showLibrary, setShowLibrary] = useState(false)
+  const [showCrop, setShowCrop] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [inlineRect, setInlineRect] = useState<{
@@ -119,6 +147,12 @@ export function Editor({
   const [rightOpen, setRightOpen] = useState(() => window.innerWidth >= 768)
   const [zoom, setZoom] = useState(100)
   const chartDrafts = useRef(new Map<string, ChartInputDraft>())
+  const activeChartIds = useRef(new Set<string>())
+  activeChartIds.current = new Set(
+    deck.slides.flatMap((item) =>
+      item.blocks.filter((element) => element.type === 'chart').map((element) => element.id),
+    ),
+  )
   const [chartDraftCount, setChartDraftCount] = useState(0)
   const [confirmLeavingDrafts, setConfirmLeavingDrafts] = useState(false)
   const imageInput = useRef<HTMLInputElement>(null)
@@ -131,13 +165,14 @@ export function Editor({
   const slide = deck.slides[activeIndex]
   const block = slide.blocks.find((b) => b.id === selected)
   const theme = getTheme(deck.themeId)
+  const appearance = resolveAppearance(slide, theme, deck.accent, deck.brand)
+  const cropFrame = block ? getBlockFrame(slide, theme, block.id, deck.brand) : null
+  function countActiveChartDrafts() {
+    return [...chartDrafts.current.keys()].filter((id) => activeChartIds.current.has(id)).length
+  }
   useEffect(() => {
-    const validIds = new Set(
-      deck.slides.flatMap((item) => item.blocks.map((element) => element.id)),
-    )
-    for (const id of chartDrafts.current.keys())
-      if (!validIds.has(id)) chartDrafts.current.delete(id)
-    setChartDraftCount(chartDrafts.current.size)
+    // Keep drafts for deleted objects so Undo can restore them; only live charts count as pending.
+    setChartDraftCount(countActiveChartDrafts())
   }, [deck.slides])
   useEffect(() => {
     if (!chartDraftCount) return
@@ -149,23 +184,29 @@ export function Editor({
     return () => window.removeEventListener('beforeunload', warn)
   }, [chartDraftCount])
   function requestBack() {
-    if (chartDrafts.current.size) setConfirmLeavingDrafts(true)
+    if (countActiveChartDrafts()) setConfirmLeavingDrafts(true)
     else onBack()
   }
   function reviewDraft() {
     const target = deck.slides.find((item) =>
-      item.blocks.some((element) => chartDrafts.current.has(element.id)),
+      item.blocks.some(
+        (element) => element.type === 'chart' && chartDrafts.current.has(element.id),
+      ),
     )
     if (target) {
       selectSlide(target.id)
-      setSelected(target.blocks.find((element) => chartDrafts.current.has(element.id))!.id)
+      setSelected(
+        target.blocks.find(
+          (element) => element.type === 'chart' && chartDrafts.current.has(element.id),
+        )!.id,
+      )
       setTab('properties')
       setRightOpen(true)
     }
     setConfirmLeavingDrafts(false)
   }
   useEffect(() => setTitleDraft(deck.title), [deck.title])
-  const warnings = getSlideWarnings(slide, theme)
+  const warnings = getSlideWarnings(slide, theme, deck.brand)
   const activeText = selected === 'title' ? slide.title : (block?.content ?? '')
   useEffect(() => {
     if (!deck.slides.some((s) => s.id === slideId)) {
@@ -310,6 +351,29 @@ export function Editor({
     setShowAdd(false)
     setRightOpen(true)
   }
+  function addDiagram(type: DiagramType) {
+    if (slide.blocks.length >= 6) {
+      setError('Este slide já tem 6 elementos. Adicione um novo slide para inserir o diagrama.')
+      setShowAdd(false)
+      return
+    }
+    const next = createDiagramBlock(type)
+    updateSlide((draft) => {
+      if (
+        draft.blocks.length === 1 &&
+        draft.blocks[0].type === 'text' &&
+        !draft.blocks[0].content &&
+        !draft.blocks[0].style
+      ) {
+        draft.blocks = [next]
+        draft.layout = 'bullets'
+      } else draft.blocks.push(next)
+    })
+    setSelected(next.id)
+    setTab('properties')
+    setRightOpen(true)
+    setShowAdd(false)
+  }
   async function replaceImage(file?: File) {
     if (!file || !block?.image) return
     const targetDeckId = deck.id
@@ -326,6 +390,7 @@ export function Editor({
         if (!target?.image) return
         target.image.src = src
         target.image.alt = file.name.replace(/\.[^.]+$/, '').slice(0, 300)
+        delete target.image.crop
         validateDeck(d)
       })
     } catch (e) {
@@ -341,7 +406,7 @@ export function Editor({
     setEditValue(
       id === 'title' ? slide.title : (slide.blocks.find((b) => b.id === id)?.content ?? ''),
     )
-    setInlineRect(rect ?? getTextEditRect(slide, theme, id))
+    setInlineRect(rect ?? getTextEditRect(slide, theme, id, deck.brand))
     setShowAdd(false)
   }
   function finishEditing() {
@@ -454,6 +519,8 @@ export function Editor({
             <Save size={18} />
           </button>
           <button
+            aria-label="Tema e cores"
+            title="Tema e cores"
             className={
               'button secondary theme-toggle ' + (tab === 'design' && rightOpen ? 'active' : '')
             }
@@ -465,11 +532,22 @@ export function Editor({
             <Palette size={16} />
             <span>Tema e cores</span>
           </button>
-          <button className="button secondary" onClick={() => onPresent(activeIndex)}>
+          <button
+            className="button secondary"
+            aria-label="Apresentar"
+            title="Apresentar"
+            onClick={() => onPresent(activeIndex)}
+          >
             <Play size={16} />
             <span>Apresentar</span>
           </button>
-          <button className="button primary" disabled={!!exportProgress} onClick={onExport}>
+          <button
+            className="button primary"
+            aria-label={exportProgress ?? 'Baixar PDF'}
+            title="Baixar PDF"
+            disabled={!!exportProgress}
+            onClick={() => setShowExport(true)}
+          >
             {exportProgress ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
             <span>{exportProgress ?? 'Baixar PDF'}</span>
           </button>
@@ -517,6 +595,7 @@ export function Editor({
                     slide={item}
                     theme={theme}
                     accent={deck.accent}
+                    brand={deck.brand}
                     slideNumber={index + 1}
                     totalSlides={deck.slides.length}
                   />
@@ -534,6 +613,13 @@ export function Editor({
               <Plus size={16} /> Novo slide
             </button>
             <span>Arraste para reorganizar</span>
+            <button
+              className="text-button"
+              title="Biblioteca de slides"
+              onClick={() => setShowLibrary(true)}
+            >
+              <Library size={15} /> Biblioteca de slides
+            </button>
           </div>
         </aside>
         <main className="editor-stage">
@@ -583,9 +669,23 @@ export function Editor({
                         <Plus size={13} />
                       </button>
                     ))}
+                    <div className="add-menu-label">BLOCOS VISUAIS</div>
+                    {(Object.keys(diagramLabels) as DiagramType[]).map((type) => (
+                      <button key={type} role="menuitem" onClick={() => addDiagram(type)}>
+                        <Workflow size={17} />
+                        <span>{diagramLabels[type]}</span>
+                        <Plus size={13} />
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
+              <button
+                className="button small secondary composition-trigger"
+                onClick={() => setShowComposition(true)}
+              >
+                <LayoutTemplate size={15} /> Melhorar composição
+              </button>
             </div>
             <div className="toolbar-group">
               <span className="toolbar-hint">
@@ -624,6 +724,7 @@ export function Editor({
                   slide={slide}
                   theme={theme}
                   accent={deck.accent}
+                  brand={deck.brand}
                   selectedBlockId={selected ?? undefined}
                   onSelect={(id) => {
                     setSelected(id)
@@ -779,32 +880,69 @@ export function Editor({
                 <>
                   <div className="property-title">
                     <h3>Um visual que combina.</h3>
-                    <p>Estas escolhas se aplicam à apresentação inteira.</p>
+                    <p>
+                      {deck.brand
+                        ? `Marca ativa: ${deck.brand.name}.`
+                        : 'Estas escolhas se aplicam à apresentação inteira.'}
+                    </p>
                   </div>
-                  <label className="field-label">MODELO</label>
-                  <ThemePicker
-                    compact
-                    value={deck.themeId}
-                    onChange={(themeId) =>
-                      change((d) => {
-                        d.themeId = themeId
-                        d.accent = getTheme(themeId).accent
-                      })
-                    }
-                  />
-                  <label className="field-label">COR PRINCIPAL</label>
-                  <ColorPicker
-                    value={deck.accent}
-                    onChange={(accent) =>
-                      change((d) => {
-                        d.accent = accent
-                      }, 'accent')
-                    }
-                  />
-                  <p className="property-tip">
-                    O conteúdo permanece igual ao trocar de modelo. Cores definidas em um elemento
-                    são preservadas.
-                  </p>
+                  <button
+                    className="button secondary full-width"
+                    onClick={() => setShowBrand(true)}
+                  >
+                    <Palette size={16} /> Kit de marca
+                  </button>
+                  {slide.appearance && (
+                    <div className="appearance-notice">
+                      <p className="property-tip">
+                        Este slide mantém o visual salvo na biblioteca.
+                      </p>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          updateSlide((draft) => {
+                            delete draft.appearance
+                          })
+                        }
+                      >
+                        Usar visual desta apresentação
+                      </button>
+                    </div>
+                  )}
+                  {deck.brand && (
+                    <p className="property-tip">
+                      A marca define as cores e fontes. Edite ou remova o perfil em Kit de marca
+                      para voltar aos modelos.
+                    </p>
+                  )}
+                  {!deck.brand && (
+                    <>
+                      <label className="field-label">MODELO</label>
+                      <ThemePicker
+                        compact
+                        value={deck.themeId}
+                        onChange={(themeId) =>
+                          change((d) => {
+                            d.themeId = themeId
+                            d.accent = getTheme(themeId).accent
+                          })
+                        }
+                      />
+                      <label className="field-label">COR PRINCIPAL</label>
+                      <ColorPicker
+                        value={deck.accent}
+                        onChange={(accent) =>
+                          change((d) => {
+                            d.accent = accent
+                          }, 'accent')
+                        }
+                      />
+                      <p className="property-tip">
+                        O conteúdo permanece igual ao trocar de modelo. Cores definidas em um
+                        elemento são preservadas.
+                      </p>
+                    </>
+                  )}
                 </>
               ) : !selected ? (
                 <>
@@ -859,14 +997,14 @@ export function Editor({
                     <div className="color-field">
                       <input
                         type="color"
-                        value={slide.background ?? theme.background}
+                        value={slide.background ?? appearance.theme.background}
                         onChange={(e) =>
                           updateSlide((s) => {
                             s.background = e.target.value
                           }, slide.id + 'background')
                         }
                       />
-                      <span>{slide.background ?? theme.background}</span>
+                      <span>{slide.background ?? appearance.theme.background}</span>
                       <button
                         className="icon-button"
                         aria-label="Restaurar fundo do tema"
@@ -1021,13 +1159,13 @@ export function Editor({
                             aria-label="Cor do texto"
                             value={
                               (selected === 'title' ? slide.titleStyle : block?.style)?.color ??
-                              theme.foreground
+                              appearance.theme.foreground
                             }
                             onChange={(e) => style('color', e.target.value)}
                           />
                           <span>
                             {(selected === 'title' ? slide.titleStyle : block?.style)?.color ??
-                              theme.foreground}
+                              appearance.theme.foreground}
                           </span>
                         </div>
                       </label>
@@ -1037,7 +1175,7 @@ export function Editor({
                           <input
                             type="color"
                             aria-label="Fundo do destaque"
-                            value={block.style?.background ?? theme.surface}
+                            value={block.style?.background ?? appearance.theme.surface}
                             onChange={(e) => style('background', e.target.value)}
                           />
                         </label>
@@ -1064,8 +1202,17 @@ export function Editor({
                           }}
                           theme={theme}
                           accent={deck.accent}
+                          brand={deck.brand}
                         />
                       </div>
+                      {block.image.src && (
+                        <button
+                          className="button secondary full-width"
+                          onClick={() => setShowCrop(true)}
+                        >
+                          <Crop size={15} /> Recortar e posicionar
+                        </button>
+                      )}
                       <button
                         className="button secondary full-width"
                         onClick={() => imageInput.current?.click()}
@@ -1129,7 +1276,15 @@ export function Editor({
                           value={block.image.position}
                           onChange={(e) =>
                             updateBlock((b) => {
-                              if (b.image) b.image.position = Number(e.target.value)
+                              if (b.image) {
+                                b.image.position = Number(e.target.value)
+                                if (b.image.crop)
+                                  b.image.crop = {
+                                    ...b.image.crop,
+                                    x: Number(e.target.value),
+                                    y: Number(e.target.value),
+                                  }
+                              }
                             }, block.id + 'position')
                           }
                         />
@@ -1152,12 +1307,27 @@ export function Editor({
                       </p>
                     </>
                   )}
+                  {block?.type === 'diagram' && block.diagram && (
+                    <DiagramEditor
+                      block={block}
+                      onChange={(diagram) =>
+                        updateBlock((draft) => {
+                          draft.diagram = diagram
+                        }, block.id + '-diagram')
+                      }
+                      onTitleChange={(title) =>
+                        updateBlock((draft) => {
+                          draft.content = title
+                        }, block.id + '-diagram-title')
+                      }
+                    />
+                  )}
                   {block?.type === 'chart' && (
                     <ChartEditor
                       key={block.id}
                       onPreview={() => onPresent(activeIndex)}
                       drafts={chartDrafts.current}
-                      onDraftChange={() => setChartDraftCount(chartDrafts.current.size)}
+                      onDraftChange={() => setChartDraftCount(countActiveChartDrafts())}
                       block={block}
                       onChange={(value) =>
                         updateBlock((b) => {
@@ -1254,25 +1424,154 @@ export function Editor({
         </Modal>
       )}
       {showSource && (
-        <Modal title="Seu conteúdo original" onClose={() => setShowSource(false)} wide>
-          <div className="source-modal">
-            <div className="source-meta">
-              <FileText size={18} />
-              <span>{deck.source.name}</span>
+        <Modal title="Conferir origem" onClose={() => setShowSource(false)} wide>
+          <Suspense fallback={<p role="status">Abrindo origem…</p>}>
+            <SourcePanel slide={slide} deck={deck} />
+          </Suspense>
+          <details className="source-original-details">
+            <summary>Ver todo o conteúdo original</summary>
+            <div className="source-modal">
+              <div className="source-meta">
+                <FileText size={18} />
+                <span>{deck.source.name}</span>
+              </div>
+              <p className="muted">
+                O conteúdo de entrada é preservado aqui. A apresentação é uma síntese editável.
+              </p>
+              {deck.source.pages?.length ? (
+                deck.source.pages.map((page) => (
+                  <section key={page.page}>
+                    <h3>Página {page.page}</h3>
+                    <p>{page.text || 'Página sem texto extraído.'}</p>
+                  </section>
+                ))
+              ) : (
+                <p className="source-text">{deck.source.text}</p>
+              )}
             </div>
-            <p className="muted">
-              O conteúdo de entrada é preservado aqui. A apresentação é uma síntese editável.
-            </p>
-            {deck.source.pages?.length ? (
-              deck.source.pages.map((page) => (
-                <section key={page.page}>
-                  <h3>Página {page.page}</h3>
-                  <p>{page.text || 'Página sem texto extraído.'}</p>
-                </section>
-              ))
-            ) : (
-              <p className="source-text">{deck.source.text}</p>
-            )}
+          </details>
+        </Modal>
+      )}
+      {showComposition && (
+        <Modal title="Melhorar composição" onClose={() => setShowComposition(false)} wide>
+          <Suspense fallback={<p role="status">Preparando opções…</p>}>
+            <CompositionPanel
+              slide={slide}
+              theme={theme}
+              accent={deck.accent}
+              brand={deck.brand}
+              slideCount={deck.slides.length}
+              onApply={(slides) => {
+                change((draft) => {
+                  const index = draft.slides.findIndex((item) => item.id === slide.id)
+                  if (index < 0) throw new Error('O slide não está mais disponível.')
+                  draft.slides.splice(index, 1, ...slides)
+                  validateDeck(draft)
+                })
+                selectSlide(slides[0].id)
+                setShowComposition(false)
+              }}
+            />
+          </Suspense>
+        </Modal>
+      )}
+      <Suspense
+        fallback={
+          <div className="leaving-overlay" role="status">
+            Abrindo editor…
+          </div>
+        }
+      >
+        {showBrand && (
+          <BrandPanel
+            deck={deck}
+            onClose={() => setShowBrand(false)}
+            onApply={(kit, mode) => {
+              change((draft) => Object.assign(draft, applyBrandToDeck(draft, kit, mode)))
+              setShowBrand(false)
+            }}
+            onRemove={() => {
+              change((draft) => {
+                delete draft.brand
+              })
+              setShowBrand(false)
+            }}
+          />
+        )}
+        {showLibrary && (
+          <SlideLibraryPanel
+            deck={deck}
+            slideId={slide.id}
+            onClose={() => setShowLibrary(false)}
+            onInsert={(item, mode) => {
+              let insertedId = ''
+              change((draft) => {
+                const next = insertReusableSlide(draft, item, activeIndex, mode)
+                insertedId = next.slides[activeIndex + 1].id
+                Object.assign(draft, next)
+              })
+              selectSlide(insertedId)
+              setShowLibrary(false)
+            }}
+          />
+        )}
+        {showCrop && block?.image?.src && cropFrame && (
+          <CropPanel
+            image={block.image}
+            frame={{ width: cropFrame.w, height: cropFrame.h }}
+            onClose={() => setShowCrop(false)}
+            onApply={(crop) => {
+              updateBlock((draft) => {
+                if (draft.image) {
+                  draft.image.crop = crop
+                  draft.image.fit = 'cover'
+                }
+              })
+              setShowCrop(false)
+            }}
+          />
+        )}
+      </Suspense>
+      {showExport && (
+        <Modal title="Baixar apresentação em PDF" onClose={() => setShowExport(false)}>
+          <div className="export-choices">
+            <section>
+              <h3>Texto selecionável</h3>
+              <p>
+                Texto pesquisável, gráficos e diagramas vetoriais. Fotos, logos e ilustrações
+                decorativas permanecem imagens para preservar sua aparência. As fontes dos kits de
+                marca são incorporadas.
+              </p>
+              <p className="property-tip">
+                Slides antigos usam Liberation Sans no lugar de Arial e Liberation Serif no lugar de
+                Georgia. Essa substituição pode mudar pequenas medidas do texto.
+              </p>
+              <button
+                className="button primary full-width"
+                onClick={() => {
+                  setShowExport(false)
+                  onExport('searchable')
+                }}
+              >
+                <Download size={16} /> Exportar PDF pesquisável
+              </button>
+            </section>
+            <section>
+              <h3>Aparência como imagem</h3>
+              <p>
+                Uma imagem completa por página, preservando a aparência das fontes do navegador. O
+                texto não fica selecionável neste modo.
+              </p>
+              <button
+                className="button secondary full-width"
+                onClick={() => {
+                  setShowExport(false)
+                  onExport('image')
+                }}
+              >
+                Exportar PDF como imagem
+              </button>
+            </section>
           </div>
         </Modal>
       )}

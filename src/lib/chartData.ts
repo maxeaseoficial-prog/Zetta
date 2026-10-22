@@ -403,3 +403,75 @@ export function serializeChartInput(
   )
   return lines.join('\n')
 }
+
+export interface ChartTablePreview {
+  columns: string[]
+  rows: string[][]
+}
+
+/** Bounded, literal preview. No numeric conversion or column removal until explicit mapping. */
+export function readChartTable(text: string, hasHeader: boolean): ChartTablePreview {
+  if (!text.trim()) throw new Error('Cole ou importe uma tabela antes de mapear as colunas.')
+  if (text.length > 100_000 || text.includes('\u0000'))
+    throw new Error('Use uma tabela UTF-8 com até 100 mil caracteres.')
+  const input = text.replace(/^\uFEFF/, '')
+  const delimiter = delimiterFor(input, false)
+  const source = readRows(input, delimiter)
+  if (delimiter === '|')
+    for (const row of source) {
+      if (row.cells[0]?.value === '' && !row.cells[0].quoted) row.cells.shift()
+      if (row.cells.at(-1)?.value === '' && !row.cells.at(-1)!.quoted) row.cells.pop()
+    }
+  const width = source[0]?.cells.length ?? 0
+  if (width < 2 || width > 16)
+    throw new Error('A prévia aceita de 2 a 16 colunas. Selecione até três séries ao mapear.')
+  if (source.some((row) => row.cells.length !== width))
+    throw new Error(
+      'Todas as linhas precisam ter a mesma quantidade de colunas. Confira separadores, aspas e campos vazios.',
+    )
+  const markdownHeader =
+    delimiter === '|' &&
+    source[1]?.cells.every((cell) => !cell.quoted && /^:?-{3,}:?$/.test(cell.value.trim()))
+  if (markdownHeader && !hasHeader)
+    throw new Error(
+      'Esta tabela Markdown tem um cabeçalho. Marque a opção de primeira linha como cabeçalho.',
+    )
+  const rows = source
+    .slice(hasHeader ? (markdownHeader ? 2 : 1) : 0)
+    .map((row) => row.cells.map((cell) => cell.value))
+  if (!rows.length || rows.length > 12)
+    throw new Error(
+      'Use entre 1 e 12 linhas de dados. Nenhuma linha foi descartada; divida tabelas maiores antes de importar.',
+    )
+  return {
+    columns: hasHeader
+      ? source[0].cells.map((cell) => cell.value)
+      : Array.from({ length: width }, (_, index) => `Coluna ${index + 1}`),
+    rows,
+  }
+}
+
+/** Explicit selection can omit columns; it cannot omit rows, fill blanks or round values. */
+export function mapChartTable(
+  table: ChartTablePreview,
+  category: number,
+  values: number[],
+  numberFormat: ChartNumberFormat,
+): { text: string; parsed: ParsedChartInput } {
+  const chosen = [category, ...values]
+  if (!values.length || values.length > 3)
+    throw new Error('Escolha de uma a três colunas de valores.')
+  if (
+    new Set(chosen).size !== chosen.length ||
+    chosen.some((index) => !Number.isInteger(index) || index < 0 || index >= table.columns.length)
+  )
+    throw new Error('Escolha colunas diferentes para categorias e valores.')
+  const quote = (value: string) => `"${value.replace(/"/g, '""')}"`
+  const row = (cells: string[]) => `|${cells.join('|')}|`
+  const text = [
+    row([quote('Categoria'), ...values.map((index) => quote(table.columns[index]))]),
+    row(chosen.map(() => '---')),
+    ...table.rows.map((cells) => row(chosen.map((index) => quote(cells[index] ?? '')))),
+  ].join('\n')
+  return { text, parsed: parseChartInput(text, numberFormat) }
+}

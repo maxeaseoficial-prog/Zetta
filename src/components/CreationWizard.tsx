@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
@@ -15,12 +15,20 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import type { Deck, GenerationOptions, OutlineItem } from '../types'
-import type { CreationInput } from '../lib/creation'
-import { buildOutline, generateDeck, getGenerationWarnings } from '../lib/generator'
+import type { Deck, GenerationOptions, OutlineItem, PresentationBrief } from '../types'
+import {
+  AUDIENCE_LABELS,
+  DEFAULT_BRIEF,
+  PURPOSE_LABELS,
+  isOutlineEdited,
+  normalizeBrief,
+  type CreationInput,
+} from '../lib/creation'
+import { buildOutline, createId, generateDeck, getGenerationWarnings } from '../lib/generator'
 import { getTheme } from '../lib/themes'
 import { Brand } from './Brand'
 import { ColorPicker, ThemePicker } from './ThemePicker'
+import './creation.css'
 
 export function CreationWizard({
   input,
@@ -33,7 +41,12 @@ export function CreationWizard({
 }) {
   const [options, setOptions] = useState<GenerationOptions>(input.options)
   const [outline, setOutline] = useState<OutlineItem[]>(() =>
-    buildOutline(input.text, { ...input.options, pages: input.pages }),
+    buildOutline(input.text, {
+      ...input.options,
+      pages: input.pages,
+      sourceName: input.sourceName,
+      sourceKind: input.sourceKind,
+    }),
   )
   const [title, setTitle] = useState(() =>
     input.sourceKind === 'pdf'
@@ -42,10 +55,62 @@ export function CreationWizard({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [briefDraft, setBriefDraft] = useState<PresentationBrief>(() => ({
+    ...(input.options.brief ?? DEFAULT_BRIEF),
+  }))
+  const [rebuildPreview, setRebuildPreview] = useState<{
+    outline: OutlineItem[]
+    brief: PresentationBrief
+  } | null>(null)
+  const [rebuildError, setRebuildError] = useState('')
+  const rebuildPreviewRef = useRef<HTMLDivElement>(null)
+  const appliedBrief = options.brief ?? DEFAULT_BRIEF
+  const briefPending =
+    briefDraft.purpose !== appliedBrief.purpose ||
+    briefDraft.audience !== appliedBrief.audience ||
+    briefDraft.durationMinutes !== appliedBrief.durationMinutes
   const warnings = useMemo(
-    () => [...input.warnings, ...getGenerationWarnings(input.text, outline, options)],
+    () => [
+      ...input.warnings,
+      ...getGenerationWarnings(input.text, outline, {
+        ...options,
+        pages: input.pages,
+        sourceName: input.sourceName,
+        sourceKind: input.sourceKind,
+      }),
+    ],
     [input, outline, options],
   )
+  function updateBrief(patch: Partial<PresentationBrief>) {
+    setBriefDraft((current) => ({ ...current, ...patch }))
+    setRebuildPreview(null)
+    setRebuildError('')
+  }
+  function previewRebuild() {
+    setRebuildError('')
+    try {
+      const brief = normalizeBrief(briefDraft)
+      setRebuildPreview({
+        brief,
+        outline: buildOutline(input.text, {
+          ...options,
+          brief,
+          pages: input.pages,
+          sourceName: input.sourceName,
+          sourceKind: input.sourceKind,
+        }),
+      })
+      requestAnimationFrame(() =>
+        rebuildPreviewRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      )
+    } catch (cause) {
+      setRebuildError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível preparar o roteiro. Confira os campos.',
+      )
+    }
+  }
   function updateItem(index: number, key: 'title' | 'content', value: string) {
     setOutline((items) => items.map((item, i) => (i === index ? { ...item, [key]: value } : item)))
   }
@@ -129,6 +194,159 @@ export function CreationWizard({
                 {input.sourceName} · {input.text.length.toLocaleString('pt-BR')} caracteres
               </span>
             </div>
+            <section className="narrative-brief" aria-label="Direção do roteiro">
+              <h3>Para quem e para quê?</h3>
+              <p>
+                O objetivo e o público orientam a ordem dos tópicos. Informações que faltam aparecem
+                como perguntas para você resolver.
+              </p>
+              <div className="narrative-brief-fields">
+                <label className="field-label">
+                  Objetivo
+                  <select
+                    aria-label="Objetivo da apresentação"
+                    value={briefDraft.purpose}
+                    onChange={(event) =>
+                      updateBrief({ purpose: event.target.value as PresentationBrief['purpose'] })
+                    }
+                  >
+                    {Object.entries(PURPOSE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Público
+                  <select
+                    aria-label="Público da apresentação"
+                    value={briefDraft.audience}
+                    onChange={(event) =>
+                      updateBrief({ audience: event.target.value as PresentationBrief['audience'] })
+                    }
+                  >
+                    {Object.entries(AUDIENCE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Duração desejada · minutos
+                  <input
+                    aria-label="Duração da apresentação em minutos"
+                    type="number"
+                    min={1}
+                    max={180}
+                    step={1}
+                    value={briefDraft.durationMinutes ?? ''}
+                    placeholder="Opcional"
+                    onChange={(event) =>
+                      updateBrief({
+                        durationMinutes:
+                          event.target.value === '' ? undefined : Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="narrative-brief-actions">
+                <button type="button" className="button secondary" onClick={previewRebuild}>
+                  <RotateCcw size={14} /> Ver roteiro sugerido
+                </button>
+                {briefPending && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setBriefDraft({ ...appliedBrief })
+                      setRebuildPreview(null)
+                      setRebuildError('')
+                    }}
+                  >
+                    Manter direção atual
+                  </button>
+                )}
+              </div>
+              {briefPending && (
+                <p className="narrative-pending">
+                  As opções acima ainda não foram aplicadas. Confira a sugestão antes de substituir
+                  seu roteiro.
+                </p>
+              )}
+              {rebuildError && (
+                <p className="inline-error" role="alert">
+                  {rebuildError}
+                </p>
+              )}
+              {rebuildPreview && (
+                <div
+                  ref={rebuildPreviewRef}
+                  className="narrative-preview"
+                  aria-label="Prévia do novo roteiro"
+                >
+                  <h4>Roteiro sugerido · {rebuildPreview.outline.length + 2} slides</h4>
+                  <p>
+                    {PURPOSE_LABELS[rebuildPreview.brief.purpose]} ·{' '}
+                    {AUDIENCE_LABELS[rebuildPreview.brief.audience]}
+                    {rebuildPreview.brief.durationMinutes
+                      ? ` · cerca de ${rebuildPreview.brief.durationMinutes} min pretendidos`
+                      : ''}
+                  </p>
+                  <ol>
+                    {rebuildPreview.outline.map((item) => (
+                      <li key={item.id}>
+                        <strong>{item.title}</strong>
+                        <details>
+                          <summary>Conferir conteúdo do tópico</summary>
+                          <pre>{item.content}</pre>
+                        </details>
+                      </li>
+                    ))}
+                  </ol>
+                  {rebuildPreview.outline.some((item) => item.requirements?.length) && (
+                    <div className="narrative-questions">
+                      <strong>Perguntas que merecem revisão</strong>
+                      <ul>
+                        {rebuildPreview.outline
+                          .flatMap((item) => item.requirements ?? [])
+                          .map((question) => (
+                            <li key={question}>{question}</li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p>
+                    Aplicar substitui os tópicos e suas edições pelo roteiro acima. A fonte original
+                    permanece intacta. A duração é uma referência para o ritmo, não uma estimativa
+                    de leitura medida.
+                  </p>
+                  <div className="narrative-brief-actions">
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={() => {
+                        setOutline(rebuildPreview.outline)
+                        setOptions((current) => ({ ...current, brief: rebuildPreview.brief }))
+                        setRebuildPreview(null)
+                        setError('')
+                      }}
+                    >
+                      <Check size={14} /> Aplicar este roteiro
+                    </button>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => setRebuildPreview(null)}
+                    >
+                      Cancelar prévia
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
             <label className="field-label title-field">
               NOME DA APRESENTAÇÃO
               <input
@@ -199,6 +417,45 @@ export function CreationWizard({
                       {item.sourcePages.join(', ')}
                     </span>
                   )}
+                  {isOutlineEdited(item) === true && (
+                    <details className="outline-origin-review">
+                      <summary>Conteúdo editado · consultar trecho original</summary>
+                      <pre>{item.origin?.excerpt}</pre>
+                    </details>
+                  )}
+                  {item.requirements?.length ? (
+                    <div className="narrative-questions">
+                      <strong>Perguntas a resolver · não são fatos da fonte</strong>
+                      <ul>
+                        {item.requirements.map((question, questionIndex) => (
+                          <li key={`${questionIndex}-${question}`}>
+                            <span>{question}</span>
+                            <button
+                              type="button"
+                              className="text-button"
+                              aria-label={`Marcar como resolvida: ${question}`}
+                              onClick={() =>
+                                setOutline((items) =>
+                                  items.map((entry) =>
+                                    entry.id === item.id
+                                      ? {
+                                          ...entry,
+                                          requirements: entry.requirements?.filter(
+                                            (_, position) => position !== questionIndex,
+                                          ),
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              Resolvido
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -208,7 +465,19 @@ export function CreationWizard({
               onClick={() =>
                 setOutline((items) => [
                   ...items,
-                  { id: crypto.randomUUID(), title: 'Novo tópico', content: '', sourcePages: [] },
+                  {
+                    id: createId('outline'),
+                    title: 'Novo tópico',
+                    content: '',
+                    sourcePages: [],
+                    origin: {
+                      kind: 'manual',
+                      sourceName: 'Adicionado ao roteiro',
+                      sourceKind: 'manual',
+                      excerpt: '',
+                      pages: [],
+                    },
+                  },
                 ])
               }
             >
@@ -312,26 +581,22 @@ export function CreationWizard({
                 <select
                   aria-label="Nova quantidade de slides"
                   value={options.slideCount}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setOptions((v) => ({ ...v, slideCount: Number(e.target.value) }))
-                  }
+                    setRebuildPreview(null)
+                  }}
                 >
-                  {[4, 6, 8, 10, 12, 16, 20].map((n) => (
+                  {[3, 4, 5, 6, 8, 10, 12, 16, 20].map((n) => (
                     <option value={n} key={n}>
                       {n} slides, incluindo capa e fim
                     </option>
                   ))}
                 </select>
               </label>
-              <button
-                className="text-button"
-                onClick={() =>
-                  setOutline(buildOutline(input.text, { ...options, pages: input.pages }))
-                }
-              >
+              <button className="text-button" onClick={previewRebuild}>
                 <RotateCcw size={13} /> Refazer roteiro a partir da fonte
               </button>
-              <small>Substitui as edições dos tópicos acima.</small>
+              <small>Abra a prévia e confira antes de substituir suas edições.</small>
             </div>
             <div className="style-panel-footer">
               <span>
@@ -339,13 +604,23 @@ export function CreationWizard({
               </span>
               <button
                 className="button primary"
-                disabled={busy || !title.trim() || outline.some((item) => !item.title.trim())}
+                disabled={
+                  busy ||
+                  briefPending ||
+                  !title.trim() ||
+                  outline.some((item) => !item.title.trim() || !item.content.trim())
+                }
                 onClick={() => void create()}
               >
                 {busy ? <LoaderCircle size={18} className="spin" /> : <Sparkles size={18} />}{' '}
                 {busy ? 'Montando apresentação…' : 'Criar minha apresentação'}{' '}
                 {!busy && <ArrowRight size={17} />}
               </button>
+              {briefPending && (
+                <p className="narrative-pending">
+                  Aplique o roteiro sugerido ou mantenha a direção atual para continuar.
+                </p>
+              )}
               {error && (
                 <p role="alert" className="inline-error">
                   {error}
